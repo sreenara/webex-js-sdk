@@ -1,6 +1,6 @@
 {
   "name": "@webex/internal-plugin-mercury",
-  "description": "",
+  "description": "notifications",
   "license": "MIT",
   "main": "dist/index.js",
   "devMain": "src/index.js",
