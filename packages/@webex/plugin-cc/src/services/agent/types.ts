@@ -91,14 +91,14 @@ export type DNRegistered = Msg<{
 
 export type Logout = {logoutReason?: 'User requested logout' | 'Inactivity Logout'};
 
+export type AgentState = 'Available' | 'Idle' | 'RONA' | string;
+
 export type StateChange = {
   state: AgentState;
-  auxCodeIdArray: string;
+  auxCodeId: string;
   lastStateChangeReason?: string;
   agentId?: string;
 };
-
-export type AgentState = 'Available' | 'Idle' | 'RONA' | string;
 
 export type UserStationLogin = {
   dialNumber?: string | null;

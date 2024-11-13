@@ -1,6 +1,7 @@
 import {WebexPlugin} from '@webex/webex-core';
 import AgentConfig from './features/Agentconfig';
 import {
+  SetStateResponse,
   CCPluginConfig,
   IContactCenter,
   WebexSDK,
@@ -22,8 +23,8 @@ import {AGENT, WEB_RTC_PREFIX} from './services/constants';
 import {WebSocketManager} from './services/core/WebSocket/WebSocketManager';
 import Services from './services';
 import LoggerProxy from './logger-proxy';
+import {StateChange, Logout} from './services/agent/types';
 import {ConnectionService} from './services/core/WebSocket/connection-service';
-import {Logout} from './services/agent/types';
 import {getErrorDetails} from './services/core/Utils';
 
 export default class ContactCenter extends WebexPlugin implements IContactCenter {
@@ -210,6 +211,27 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
     }
 
     return WEB_RTC_PREFIX + this.agentConfig.agentId;
+  }
+
+  /**
+   * This is used for setting agent state.
+   * @param options
+   * @returns Promise<SetStateResponse>
+   * @throws Error
+   */
+
+  public async setAgentState(data: StateChange): Promise<SetStateResponse> {
+    try {
+      const agentStatusResponse = await this.services.agent.stateChange({
+        data: {...data, agentId: data.agentId || this.agentConfig.agentId},
+      });
+
+      this.$webex.logger.log(`file: ${CC_FILE}: SET AGENT STATUS API SUCCESS`);
+
+      return agentStatusResponse;
+    } catch (error) {
+      throw getErrorDetails(error, 'setAgentState');
+    }
   }
 
   /**

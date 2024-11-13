@@ -8,13 +8,12 @@ import {
 } from '../../../src/types';
 import ContactCenter from '../../../src/cc';
 import MockWebex from '@webex/test-helper-mock-webex';
-import { StationLoginSuccess } from '../../../src/services/agent/types';
-import { IAgentProfile } from '../../../src/types';
-import { AGENT, WEB_RTC_PREFIX } from '../../../src/services/constants';
+import {StationLoginSuccess} from '../../../src/services/agent/types';
+import {IAgentProfile} from '../../../src/types';
+import {AGENT, WEB_RTC_PREFIX} from '../../../src/services/constants';
 import Services from '../../../src/services';
 import config from '../../../src/config';
 import LoggerProxy from '../../../src/logger-proxy';
-import { getErrorDetails, createErrDetailsObject } from '../../../src/services/core/Utils';
 
 // Mock the Worker API
 import '../../../__mocks__/workerMock';
@@ -77,6 +76,7 @@ describe('webex.cc', () => {
         stationLogin: jest.fn(),
         logout: jest.fn(),
         reload: jest.fn(),
+        stateChange: jest.fn(),
         buddyAgents: jest.fn(),
       },
     };
@@ -305,7 +305,7 @@ describe('webex.cc', () => {
 
   describe('stationLogout', () => {
     it('should logout successfully', async () => {
-      const data = { logoutReason: 'Logout reason' };
+      const data = {logoutReason: 'Logout reason'};
       const response = {};
 
       const stationLogoutMock = jest
@@ -314,12 +314,12 @@ describe('webex.cc', () => {
 
       const result = await webex.cc.stationLogout(data);
 
-      expect(stationLogoutMock).toHaveBeenCalledWith({ data: data });
+      expect(stationLogoutMock).toHaveBeenCalledWith({data: data});
       expect(result).toEqual(response);
     });
 
     it('should handle error during stationLogout', async () => {
-      const data = { logoutReason: 'Logout reason' };
+      const data = {logoutReason: 'Logout reason'};
       const error = {
         details: {
           trackingId: '1234',
@@ -372,6 +372,98 @@ describe('webex.cc', () => {
       );
     });
   });
+
+  describe('setAgentStatus', () => {
+    it('should set agent status successfully when status is Available', async () => {
+      const expectedPayload = {
+        state: 'Available',
+        auxCodeId: '0',
+        agentId: '123',
+        lastStateChangeReason: 'Agent is available',
+      };
+
+      const setAgentStatusMock = jest
+        .spyOn(webex.cc.services.agent, 'stateChange')
+        .mockResolvedValue(expectedPayload);
+
+      const result = await webex.cc.setAgentState(expectedPayload);
+
+      expect(setAgentStatusMock).toHaveBeenCalledWith({data: expectedPayload});
+      expect(result).toEqual(expectedPayload);
+      expect(webex.logger.log).toHaveBeenCalledWith('file: cc: SET AGENT STATUS API SUCCESS');
+    });
+
+    it('should set agent status successfully when status is Meeting', async () => {
+      const expectedPayload = {
+        state: 'Meeting',
+        auxCodeId: '12345',
+        agentId: '123',
+        lastStateChangeReason: 'Agent is in meeting',
+      };
+
+      const setAgentStatusMock = jest
+        .spyOn(webex.cc.services.agent, 'stateChange')
+        .mockResolvedValue(expectedPayload);
+
+      const result = await webex.cc.setAgentState(expectedPayload);
+
+      expect(setAgentStatusMock).toHaveBeenCalledWith({data: expectedPayload});
+      expect(result).toEqual(expectedPayload);
+      expect(webex.logger.log).toHaveBeenCalledWith('file: cc: SET AGENT STATUS API SUCCESS');
+    });
+
+    it('should handle error during setAgentStatus when status is Meeting', async () => {
+      const expectedPayload = {
+        state: 'Meeting',
+        auxCodeId: '12345',
+        agentId: '123',
+        lastStateChangeReason: 'Agent is in meeting',
+      };
+
+      const error = {
+        details: {
+          trackingId: '1234',
+          data: {
+            reason: 'missing status',
+          },
+        },
+      };
+      jest.spyOn(webex.cc.services.agent, 'stateChange').mockRejectedValue(error);
+
+      await expect(webex.cc.setAgentState(expectedPayload)).rejects.toThrow(
+        error.details.data.reason
+      );
+      expect(LoggerProxy.logger.error).toHaveBeenCalledWith(
+        `setAgentState failed with trackingId: ${error.details.trackingId}`
+      );
+    });
+
+    it('should handle invalid status', async () => {
+      const invalidPayload = {
+        state: 'invalid',
+        auxCodeId: '12345',
+        agentId: '123',
+        lastStateChangeReason: 'invalid',
+      };
+      const error = {
+        details: {
+          trackingId: '1234',
+          data: {
+            reason: 'Invalid status',
+          },
+        },
+      };
+      jest.spyOn(webex.cc.services.agent, 'stateChange').mockRejectedValue(error);
+
+      await expect(webex.cc.setAgentState(invalidPayload)).rejects.toThrow(
+        error.details.data.reason
+      );
+      expect(LoggerProxy.logger.error).toHaveBeenCalledWith(
+        `setAgentState failed with trackingId: ${error.details.trackingId}`
+      );
+    });
+  });
+
   describe('getBuddyAgents', () => {
     it('should return buddy agents response when successful', async () => {
       const data: BuddyAgents = {state: 'Available', mediaType: 'telephony'};
