@@ -1,3 +1,5 @@
+import {LOGGER} from '@webex/calling';
+
 export default {
   cc: {
     allowMultiLogin: true,
@@ -7,6 +9,16 @@ export default {
     metrics: {
       clientName: 'WEBEX_JS_SDK',
       clientType: 'WebexCCSDK',
+    },
+    callingClientConfig: {
+      logger: {
+        level: LOGGER.INFO,
+      },
+      serviceData: {
+        indicator: 'contactcenter',
+        // TODO: This should be dynamic based on the environment
+        domain: 'rtw.prod-us1.rtmsprod.net',
+      },
     },
   },
 };

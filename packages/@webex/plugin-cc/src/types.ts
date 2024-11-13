@@ -1,4 +1,5 @@
-import {IAgentProfile} from './AgentConfig/types';
+import {CallingClientConfig} from '@webex/calling';
+import * as Agent from './services/agent/types';
 
 type Enum<T extends Record<string, unknown>> = T[keyof T];
 
@@ -14,7 +15,9 @@ export const HTTP_METHODS = {
 // Derive the type using the utility type
 export type HTTP_METHODS = Enum<typeof HTTP_METHODS>;
 
-type WebexRequestPayload = {
+export type WebexRequestPayload = {
+  service?: string;
+  resource?: string;
   method?: HTTP_METHODS;
   uri?: string;
   addAuthHeader?: boolean;
@@ -50,7 +53,17 @@ export interface CCPluginConfig {
     enable: boolean;
     verboseEvents: boolean;
   };
+  callingClientConfig: CallingClientConfig;
 }
+
+export type Logger = {
+  log: (payload: string) => void;
+  error: (payload: string) => void;
+  warn: (payload: string) => void;
+  info: (payload: string) => void;
+  trace: (payload: string) => void;
+  debug: (payload: string) => void;
+};
 
 export interface WebexSDK {
   version: string;
@@ -90,21 +103,13 @@ export interface WebexSDK {
         'ucmgmt-gateway': string;
         contactsService: string;
       };
-      get(name: string, priorityHost?: boolean, serviceGroup?: string): string;
     };
     metrics: {
       submitClientMetrics: (name: string, data: unknown) => void;
     };
   };
   // public plugins
-  logger: {
-    log: (payload: string) => void;
-    error: (payload: string) => void;
-    warn: (payload: string) => void;
-    info: (payload: string) => void;
-    trace: (payload: string) => void;
-    debug: (payload: string) => void;
-  };
+  logger: Logger;
 }
 
 /**
@@ -113,27 +118,9 @@ export interface WebexSDK {
  */
 export interface IContactCenter {
   /**
-   * @ignore
-   */
-  $config: CCPluginConfig;
-  /**
-   * @ignore
-   */
-  $webex: WebexSDK;
-  /**
-   * WCC API Gateway Url
-   */
-  wccApiUrl: string;
-  /**
    * This will be public API used for making the CC SDK ready by setting up the cc mercury connection.
    */
   register(): Promise<IAgentProfile>;
-
-  /**
-   * This will be public API used for unregistering the CC SDK by disconnecting the cc mercury connection
-   * @returns Promise<void>
-   */
-  unregister(): Promise<void>;
 }
 
 export interface IHttpResponse {
@@ -144,26 +131,190 @@ export interface IHttpResponse {
   url: string;
 }
 
-// Define the CC_EVENTS object
-export const CC_EVENTS = {
-  WELCOME: 'Welcome',
+export const LoginOption = {
+  AGENT_DN: 'AGENT_DN',
+  EXTENSION: 'EXTENSION',
+  BROWSER: 'BROWSER',
 } as const;
 
 // Derive the type using the utility type
-export type CC_EVENTS = Enum<typeof CC_EVENTS>;
+export type LoginOption = Enum<typeof LoginOption>;
 
-export interface WebSocketEvent {
-  type: CC_EVENTS;
-  data: {
-    agentId: string;
-  };
-}
+export type WelcomeEvent = {
+  agentId: string;
+};
 
-export interface SubscribeRequest {
+export type WelcomeResponse = WelcomeEvent | Error;
+
+export type SubscribeRequest = {
   force: boolean;
   isKeepAliveEnabled: boolean;
   clientType: string;
   allowMultiLogin: boolean;
-}
+};
+
+/**
+ * Represents the response from getListOfTeams method.
+ *
+ * @public
+ */
+export type Team = {
+  /**
+   * ID of the team.
+   */
+  id: string;
+
+  /**
+   *  Name of the Team.
+   */
+  name: string;
+};
+
+/**
+ * Represents AuxCode.
+ * @public
+ */
+
+export type AuxCode = {
+  /**
+   * ID of the Auxiliary Code.
+   */
+  id: string;
+
+  /**
+   * Indicates whether the auxiliary code is active or not active.
+   */
+  active: boolean;
+
+  /**
+   * Indicates whether this is the default code (true) or not (false).
+   */
+  defaultCode: boolean;
+
+  /**
+   * Indicates whether this is the system default code (true) or not (false).
+   */
+  isSystemCode: boolean;
+
+  /**
+   * A short description indicating the context of the code.
+   */
+  description: string;
+
+  /**
+   * Name for the Auxiliary Code.
+   */
+  name: string;
+
+  /**
+   * Indicates the work type associated with this code..
+   */
+
+  workTypeCode: string;
+};
+
+/**
+ * Represents the response from AgentConfig.
+ *
+ * @public
+ */
+export type IAgentProfile = {
+  /**
+   * The id of the agent.
+   */
+
+  agentId: string;
+
+  /**
+   * The name of the agent.
+   */
+  agentName: string;
+
+  /**
+   * Identifier for a Desktop Profile.
+   */
+  agentProfileId: string;
+
+  /**
+   * The email address of the agent.
+   */
+
+  agentMailId: string;
+
+  /**
+   * Represents list of teams of an agent.
+   */
+  teams: Team[];
+
+  /**
+   * Represents the voice options of an agent.
+   */
+
+  loginVoiceOptions: string[];
+
+  /**
+   * Represents the Idle codes list that the agents can select in Agent Desktop.t.
+   */
+
+  idleCodes: AuxCode[];
+
+  /**
+   * Represents the wrap-up codes list that the agents can select when they wrap up a contact.
+   */
+  wrapUpCodes: AuxCode[];
+};
 
 export type EventResult = IAgentProfile;
+
+/**
+ * Represents the request to a AgentLogin
+ *
+ * @public
+ */
+export type AgentLogin = {
+  /**
+   * A dialNumber field contains the number to dial such as a route point or extension.
+   */
+
+  dialNumber?: string;
+
+  /**
+   * The unique ID representing a team of users.
+   */
+
+  teamId: string;
+
+  /**
+   * The loginOption field contains the type of login.
+   */
+
+  loginOption: LoginOption;
+};
+export type RequestBody =
+  | SubscribeRequest
+  | Agent.Logout
+  | Agent.UserStationLogin
+  | Agent.StateChange
+  | Agent.BuddyAgents;
+
+/**
+ * Represents the options to fetch buddy agents for the logged in agent.
+ * @public
+ */
+export type BuddyAgents = {
+  /**
+   * The media type for the request. The supported values are telephony, chat, social and email.
+   */
+  mediaType: 'telephony' | 'chat' | 'social' | 'email';
+  /**
+   * It represents the current state of the returned agents which can be either Available or Idle.
+   * If state is omitted, the API will return a list of both available and idle agents.
+   * This is useful for consult scenarios, since consulting an idle agent is also supported.
+   */
+  state?: 'Available' | 'Idle';
+};
+
+export type StationLoginResponse = Agent.StationLoginSuccess | Error;
+export type StationLogoutResponse = Agent.LogoutSuccess | Error;
+export type StationReLoginResponse = Agent.ReloginSuccess | Error;
+export type BuddyAgentsResponse = Agent.BuddyAgentsSuccess | Error;

@@ -22,19 +22,25 @@ const tokenElm = document.querySelector('#access-token');
 const saveElm = document.querySelector('#access-token-save');
 const authStatusElm = document.querySelector('#access-token-status');
 const registerBtn = document.querySelector('#webexcc-register');
+const teamsDropdown = document.querySelector('#teamsDropdown');
+const agentLogin = document.querySelector('#AgentLogin');
+const agentLoginButton = document.querySelector('#loginAgent');
+const dialNumber = document.querySelector('#dialNumber');
+const registerStatus = document.querySelector('#ws-connection-status');
+const logoutAgentElm = document.querySelector('#logoutAgent');
+const buddyAgentsDropdownElm = document.getElementById('buddyAgentsDropdown');
 
-
-// Store and Grab `access-token` from localstorage
-if (localStorage.getItem('date') > new Date().getTime()) {
-  tokenElm.value = localStorage.getItem('access-token');
+// Store and Grab `access-token` from sessionStorage
+if (sessionStorage.getItem('date') > new Date().getTime()) {
+  tokenElm.value = sessionStorage.getItem('access-token');
 }
 else {
-  localStorage.removeItem('access-token');
+  sessionStorage.removeItem('access-token');
 }
 
 tokenElm.addEventListener('change', (event) => {
-  localStorage.setItem('access-token', event.target.value);
-  localStorage.setItem('date', new Date().getTime() + (12 * 60 * 60 * 1000));
+  sessionStorage.setItem('access-token', event.target.value);
+  sessionStorage.setItem('date', new Date().getTime() + (12 * 60 * 60 * 1000));
 });
 
 function changeAuthType() {
@@ -94,7 +100,7 @@ function initWebex(e) {
     console.log('Authentication#initWebex() :: Webex Ready');
 
     authStatusElm.innerText = 'Saved access token!';
-
+    registerStatus.innerHTML = 'Not Subscribed';
     registerBtn.disabled = false;
   });
 
@@ -103,12 +109,113 @@ function initWebex(e) {
 
 credentialsFormElm.addEventListener('submit', initWebex);
 
+
 function register() {
-    webex.cc.register().then((data) => {
-        console.log('Event subscription successful: ', data);
-    }).catch(() => {
-        console.log('Event subscription failed');
+    webex.cc.register(true).then((agentProfile) => {
+        registerStatus.innerHTML = 'Subscribed';
+        console.log('Event subscription successful: ', agentProfile);
+        teamsDropdown.innerHTML = ''; // Clear previously selected option on teamsDropdown
+        const listTeams = agentProfile.teams;
+        listTeams.forEach((team) => {
+            const option = document.createElement('option');
+            option.value = team.id;
+            option.text = team.name;
+            teamsDropdown.add(option);
+        });
+        const loginVoiceOptions = agentProfile.loginVoiceOptions;
+        agentLogin.innerHTML = '<option value="" selected>Choose Agent Login ...</option>'; // Clear previously selected option on agentLogin.
+        dialNumber.value = '';
+        dialNumber.disabled = true;
+        if(loginVoiceOptions.length > 0) agentLoginButton.disabled = false;
+        loginVoiceOptions.forEach((voiceOptions)=> {
+          const option = document.createElement('option');
+          option.text = voiceOptions;
+          option.value = voiceOptions;
+          agentLogin.add(option);
+        });
+    }).catch((error) => {
+        console.log('Event subscription failed', error);
     })
+}
+
+async function handleAgentLogin(e) {
+  const value = e.target.value;
+  agentDeviceType = value
+  if (value === 'AGENT_DN') {
+    dialNumber.disabled = false;
+  } else if (value === 'EXTENSION') {
+    dialNumber.disabled = false;
+  } else {
+    dialNumber.disabled = true;
+  }
+}
+
+function doAgentLogin() {
+  webex.cc.stationLogin({teamId: teamsDropdown.value, loginOption: agentDeviceType, dialNumber: dialNumber.value}).then((response) => {
+    console.log('Agent Logged in successfully', response);
+    logoutAgentElm.classList.remove('hidden');
+    // Re-Login Agent after 15 seconds for testing purpose
+    setTimeout(async () => {
+      try {
+        const response = await webex.cc.stationReLogin();
+
+        console.log('Agent Re-Login successful', response);
+      } catch (error) {
+        console.log('Agent Re-Login failed', error);
+      }
+    }, 15000);
+  }
+  ).catch((error) => {
+    if (error.message === 'AGENT_SESSION_ALREADY_EXISTS') {
+      logoutAgentElm.classList.remove('hidden');
+    }
+    console.log('Agent Login failed', error);
+  });
+}
+
+
+function logoutAgent() {
+  webex.cc.stationLogout({logoutReason: 'logout'}).then((response) => {
+    console.log('Agent logged out successfully', response);
+
+    setTimeout(() => {
+      logoutAgentElm.classList.add('hidden');
+    }, 1000);
+  }
+  ).catch((error) => {
+    console.log('Agent logout failed', error);
+  });
+}
+
+async function fetchBuddyAgents() {
+  try {
+    buddyAgentsDropdownElm.innerHTML = ''; // Clear previous options
+    const buddyAgentsResponse = await webex.cc.getBuddyAgents({mediaType: 'telephony'});
+
+    if (!buddyAgentsResponse || !buddyAgentsResponse.data) {
+      console.error('Failed to fetch buddy agents');
+      buddyAgentsDropdownElm.innerHTML = `<option disabled="true">Failed to fetch buddy agents<option>`;
+      return;
+    }
+
+    if (buddyAgentsResponse.data.agentList.length === 0) {
+      console.log('The fetched buddy agents list was empty');
+      buddyAgentsDropdownElm.innerHTML = `<option disabled="true">No buddy agents available<option>`;
+      return;
+    }
+
+    buddyAgentsResponse.data.agentList.forEach((agent) => {
+      const option = document.createElement('option');
+      option.text = `${agent.agentName} - ${agent.state}`;
+      option.value = agent.agentId;
+      buddyAgentsDropdownElm.add(option);
+    });
+
+  } catch (error) {
+    console.error('Failed to fetch buddy agents', error);
+    buddyAgentsDropdownElm.innerHTML = ''; // Clear previous options
+    buddyAgentsDropdownElm.innerHTML = `<option disabled="true">Failed to fetch buddy agents, ${error}<option>`;
+  }
 }
 
 const allCollapsibleElements = document.querySelectorAll('.collapsible');
@@ -139,8 +246,8 @@ if (window.location.hash) {
   const expiresIn = urlParams.get('expires_in');
 
   if (accessToken) {
-    localStorage.setItem('access-token', accessToken);
-    localStorage.setItem('date', new Date().getTime() + parseInt(expiresIn, 10));
+    sessionStorage.setItem('access-token', accessToken);
+    sessionStorage.setItem('date', new Date().getTime() + parseInt(expiresIn, 10));
     tokenElm.value = accessToken;
   }
 }

@@ -1,7 +1,5 @@
-export const POST_AUTH = 'postauth';
-export const WCC_API_GATEWAY = 'wcc-api-gateway';
 export const EVENT = 'event';
 export const READY = 'ready';
-export const SUBSCRIBE_API = 'v1/notification/subscribe';
 export const CC_FILE = 'cc';
-export const WEBSOCKET_EVENT_TIMEOUT = 20000;
+export const TIMEOUT_DURATION = 20000; // 20 seconds timeout duration for webrtc registration
+export const EMPTY_STRING = '';
