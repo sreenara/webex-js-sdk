@@ -1,22 +1,22 @@
 import {Msg} from './GlobalTypes';
 import * as Err from './Err';
 import {HTTP_METHODS, WebexRequestPayload} from '../../types';
-import {WebSocketManager} from './WebSocket/WebSocketManager';
 import HttpRequest from './HttpRequest';
 import LoggerProxy from '../../logger-proxy';
 import {CbRes, Conf, ConfEmpty, Pending, Req, Res, ResEmpty} from './types';
 import {TIMEOUT_REQ} from './constants';
+import {WebSocketManager} from './WebSocket/WebSocketManager';
 
 export default class AqmReqs {
   private pendingRequests: Record<string, Pending> = {};
   private pendingNotifCancelrequest: Record<string, Pending> = {};
-  private webSocketManager: WebSocketManager;
   private httpRequest: HttpRequest;
+  private webSocketManager: WebSocketManager;
 
   constructor(webSocketManager: WebSocketManager) {
     this.httpRequest = HttpRequest.getInstance();
     this.webSocketManager = webSocketManager;
-    this.webSocketManager.addEventListener('message', this.onMessage);
+    this.webSocketManager.on('message', this.onMessage.bind(this));
   }
 
   req<TRes, TErr, TReq>(c: Conf<TRes, TErr, TReq>): Res<TRes, TReq> {
@@ -203,7 +203,7 @@ export default class AqmReqs {
 
   // must be lambda
   private readonly onMessage = (msg: any) => {
-    const event = JSON.parse(msg.detail);
+    const event = JSON.parse(msg);
     if (event.type === 'Welcome') {
       LoggerProxy.logger.info(`Welcome message from Notifs Websocket`);
 
@@ -214,6 +214,10 @@ export default class AqmReqs {
       LoggerProxy.logger.info(`Keepalive from web socket`);
 
       return;
+    }
+
+    if (event.type === 'AgentReloginFailed') {
+      LoggerProxy.logger.info('Silently handling the agent relogin fail');
     }
 
     let isHandled = false;

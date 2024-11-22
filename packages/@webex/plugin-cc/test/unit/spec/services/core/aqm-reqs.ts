@@ -1,9 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import AqmReqs from '../../../../../src/services/core/aqm-reqs';
 import HttpRequest from '../../../../../src/services/core/HttpRequest';
-import {WebSocketManager} from '../../../../../src/services/core/WebSocket/WebSocketManager';
+import { WebSocketManager } from '../../../../../src/services/core/WebSocket/WebSocketManager';
 import LoggerProxy from '../../../../../src/logger-proxy';
-import {IHttpResponse} from '../../../../../src/types';
+import { IHttpResponse } from '../../../../../src/types';
 
 jest.mock('../../../../../src/services/core/HttpRequest');
 jest.mock('../../../../../src/logger-proxy', () => ({
@@ -23,7 +22,7 @@ jest.mock('../../../../../src/services/core/WebSocket/WebSocketManager');
 class MockCustomEvent<T> extends Event {
   detail: T;
 
-  constructor(event: string, params: {detail: T}) {
+  constructor(event: string, params: { detail: T }) {
     super(event);
     this.detail = params.detail;
   }
@@ -43,7 +42,7 @@ describe('AqmReqs', () => {
   let webSocketManagerInstance: jest.Mocked<WebSocketManager>;
   const mockHttpRequestResolvedValue: IHttpResponse = {
     status: 202,
-    data: {webSocketUrl: 'fake-url'},
+    data: { webSocketUrl: 'fake-url' },
     statusText: 'OK',
     headers: {},
     config: {},
@@ -66,12 +65,22 @@ describe('AqmReqs', () => {
       webex: {} as any,
     }) as jest.Mocked<WebSocketManager>;
 
-    // Mock the addEventListener method
-    webSocketManagerInstance.addEventListener = jest.fn((event, callback) => {
-      if (event === 'message') {
-        webSocketManagerInstance.dispatchEvent = callback;
+    // Mock the on method to handle event listeners
+    const eventListeners: { [key: string]: Function[] } = {};
+    webSocketManagerInstance.on = jest.fn((event: string, listener: Function) => {
+      if (!eventListeners[event]) {
+        eventListeners[event] = [];
       }
+      eventListeners[event].push(listener);
     });
+  
+    // Mock the emit method to directly call the registered listeners
+    webSocketManagerInstance.emit = (event: string, ...args: any[]) => {
+      if (eventListeners[event]) {
+        eventListeners[event].forEach((listener) => listener(...args));
+      }
+    };
+
 
     aqm = new AqmReqs(webSocketManagerInstance);
     mockWebSocketManager.mockImplementation(() => webSocketManagerInstance);
@@ -86,14 +95,14 @@ describe('AqmReqs', () => {
       notifSuccess: {
         bind: {
           type: 'RoutingMessage',
-          data: {type: 'AgentConsultConferenced', interactionId: 'intrid'},
+          data: { type: 'AgentConsultConferenced', interactionId: 'intrid' },
         },
         msg: {},
       },
       notifFail: {
         bind: {
           type: 'RoutingMessage',
-          data: {type: 'AgentConsultConferenceFailed'},
+          data: { type: 'AgentConsultConferenceFailed' },
         },
         errId: 'Service.aqm.contact.consult',
       },
@@ -109,7 +118,7 @@ describe('AqmReqs', () => {
   describe('Aqm notifs', () => {
     it('AqmReqs notifcancel', async () => {
       httpRequestInstance.request.mockResolvedValueOnce(mockHttpRequestResolvedValue);
-
+    
       const req = aqm.req(() => ({
         url: '/url',
         timeout: 4000,
@@ -126,7 +135,7 @@ describe('AqmReqs', () => {
         notifFail: {
           bind: {
             type: 'RoutingMessage',
-            data: {type: 'AgentConsultFailed'},
+            data: { type: 'AgentConsultFailed' },
           },
           errId: 'Service.aqm.contact.consult',
         },
@@ -141,21 +150,20 @@ describe('AqmReqs', () => {
           msg: {},
         },
       }));
-
+    
       try {
         const p = await Promise.all([
           req({}),
           new Promise<void>((resolve) => {
             setTimeout(() => {
-              webSocketManagerInstance.dispatchEvent(
-                new CustomEvent('message', {
-                  detail: JSON.stringify({
-                    type: 'RoutingMessage',
-                    data: {
-                      type: 'AgentCtqCancelled',
-                      interactionId: '6920dda3-337a-48b1-b82d-2333392f9905',
-                    },
-                  }),
+              webSocketManagerInstance.emit(
+                'message',
+                JSON.stringify({
+                  type: 'RoutingMessage',
+                  data: {
+                    type: 'AgentCtqCancelled',
+                    interactionId: '6920dda3-337a-48b1-b82d-2333392f9905',
+                  },
                 })
               );
               resolve();
@@ -168,7 +176,7 @@ describe('AqmReqs', () => {
 
     it('AqmReqs notif success', async () => {
       httpRequestInstance.request.mockResolvedValueOnce(mockHttpRequestResolvedValue);
-
+    
       const req = aqm.req(() => ({
         url: '/url',
         timeout: 4000,
@@ -185,7 +193,7 @@ describe('AqmReqs', () => {
         notifFail: {
           bind: {
             type: 'RoutingMessage',
-            data: {type: 'AgentConsultFailed'},
+            data: { type: 'AgentConsultFailed' },
           },
           errId: 'Service.aqm.contact.consult',
         },
@@ -200,21 +208,20 @@ describe('AqmReqs', () => {
           msg: {},
         },
       }));
-
+    
       try {
         const p = await Promise.all([
           req({}),
           new Promise<void>((resolve) => {
             setTimeout(() => {
-              webSocketManagerInstance.dispatchEvent(
-                new CustomEvent('message', {
-                  detail: JSON.stringify({
-                    type: 'RoutingMessage',
-                    data: {
-                      type: 'AgentConsultCreated',
-                      interactionId: '6920dda3-337a-48b1-b82d-2333392f9906',
-                    },
-                  }),
+              webSocketManagerInstance.emit(
+                'message',
+                JSON.stringify({
+                  type: 'RoutingMessage',
+                  data: {
+                    type: 'AgentConsultCreated',
+                    interactionId: '6920dda3-337a-48b1-b82d-2333392f9906',
+                  },
                 })
               );
               resolve();
@@ -244,7 +251,7 @@ describe('AqmReqs', () => {
         notifFail: {
           bind: {
             type: 'RoutingMessage',
-            data: {type: 'AgentConsultFailed'},
+            data: { type: 'AgentConsultFailed' },
           },
           errId: 'Service.aqm.contact.consult',
         },
@@ -269,7 +276,7 @@ describe('AqmReqs', () => {
 
     it('AqmReqs notif fail', async () => {
       httpRequestInstance.request.mockResolvedValueOnce(mockHttpRequestResolvedValue);
-
+    
       const req = aqm.req(() => ({
         url: '/url',
         timeout: 4000,
@@ -286,7 +293,7 @@ describe('AqmReqs', () => {
         notifFail: {
           bind: {
             type: 'RoutingMessage',
-            data: {type: 'AgentConsultFailed'},
+            data: { type: 'AgentConsultFailed' },
           },
           errId: 'Service.aqm.contact.consult',
         },
@@ -301,21 +308,20 @@ describe('AqmReqs', () => {
           msg: {},
         },
       }));
-
+    
       try {
         const p = await Promise.all([
           req({}),
           new Promise<void>((resolve) => {
             setTimeout(() => {
-              webSocketManagerInstance.dispatchEvent(
-                new CustomEvent('message', {
-                  detail: JSON.stringify({
-                    type: 'RoutingMessage',
-                    data: {
-                      type: 'AgentConsultFailed',
-                      interactionId: '6920dda3-337a-48b1-b82d-2333392f9907',
-                    },
-                  }),
+              webSocketManagerInstance.emit(
+                'message',
+                JSON.stringify({
+                  type: 'RoutingMessage',
+                  data: {
+                    type: 'AgentConsultFailed',
+                    interactionId: '6920dda3-337a-48b1-b82d-2333392f9907',
+                  },
                 })
               );
               resolve();
@@ -330,66 +336,63 @@ describe('AqmReqs', () => {
   describe('Event tests', () => {
     it('should handle onMessage events', async () => {
       httpRequestInstance.request.mockResolvedValueOnce(mockHttpRequestResolvedValue);
-
+    
       const req = aqm.req(() => ({
         url: '/url',
         timeout: 2000,
         notifSuccess: {
           bind: {
             type: 'RoutingMessage',
-            data: {type: 'AgentConsultConferenced', interactionId: 'intrid'},
+            data: { type: 'AgentConsultConferenced', interactionId: 'intrid' },
           },
           msg: {},
         },
         notifFail: {
           bind: {
             type: 'RoutingMessage',
-            data: {type: 'AgentConsultConferenceFailed'},
+            data: { type: 'AgentConsultConferenceFailed' },
           },
           errId: 'Service.aqm.contact.consult',
         },
       }));
-
+    
       try {
         await req({});
       } catch (e) {
         expect(e).toBeDefined();
       }
-
+    
       // Welcome event
-      webSocketManagerInstance.dispatchEvent(
-        new CustomEvent('message', {
-          detail: JSON.stringify({
-            type: 'Welcome',
-            data: {type: 'WelcomeEvent'},
-          }),
+      webSocketManagerInstance.emit(
+        'message',
+        JSON.stringify({
+          type: 'Welcome',
+          data: { type: 'WelcomeEvent' },
         })
       );
-
+    
       expect(LoggerProxy.logger.info).toHaveBeenCalledWith('Welcome message from Notifs Websocket');
-
+    
       // Keep-alive events
-      webSocketManagerInstance.dispatchEvent(
-        new CustomEvent('message', {
-          detail: JSON.stringify({
-            keepalive: 'true',
-            data: {type: 'KeepaliveEvent'},
-          }),
+      webSocketManagerInstance.emit(
+        'message',
+        JSON.stringify({
+          keepalive: 'true',
+          data: { type: 'KeepaliveEvent' },
         })
       );
-
+    
       expect(LoggerProxy.logger.info).toHaveBeenCalledWith('Keepalive from web socket');
-
+    
       // Unhandled event
-      webSocketManagerInstance.dispatchEvent(
-        new CustomEvent('message', {
-          detail: JSON.stringify({
-            type: 'UnhandledMessage',
-            data: {type: 'UnhandledEvent'},
-          }),
+      webSocketManagerInstance.emit(
+        'message',
+        JSON.stringify({
+          type: 'UnhandledMessage',
+          data: { type: 'UnhandledEvent' },
         })
       );
-
+    
       expect(LoggerProxy.logger.info).toHaveBeenCalledWith(
         'event=missingEventHandler | [AqmReqs] missing routing message handler'
       );
@@ -456,14 +459,14 @@ describe('AqmReqs', () => {
         notifSuccess: {
           bind: {
             type: 'RoutingMessage',
-            data: {type: 'AgentConsultConferenced', interactionId: 'intrid'},
+            data: { type: 'AgentConsultConferenced', interactionId: 'intrid' },
           },
           msg: {},
         },
         notifFail: {
           bind: {
             type: 'RoutingMessage',
-            data: {type: 'AgentConsultConferenceFailed'},
+            data: { type: 'AgentConsultConferenceFailed' },
           },
           errId: 'Service.aqm.contact.consult',
         },
@@ -478,7 +481,7 @@ describe('AqmReqs', () => {
 
     it('should handle failed request with err function', async () => {
       httpRequestInstance.request.mockResolvedValueOnce(mockHttpRequestResolvedValue);
-
+    
       const conf = {
         host: 'fake-host',
         url: '/url',
@@ -487,39 +490,38 @@ describe('AqmReqs', () => {
         notifSuccess: {
           bind: {
             type: 'RoutingMessage',
-            data: {type: 'AgentConsultCreated', interactionId: 'intrid'},
+            data: { type: 'AgentConsultCreated', interactionId: 'intrid' },
           },
         },
         notifFail: {
           bind: {
             type: 'RoutingMessage',
-            data: {type: 'AgentConsultFailed'},
+            data: { type: 'AgentConsultFailed' },
           },
           err: (msg: any) => new Error('Custom error'),
         },
       };
-
+    
       const promise = aqm['createPromise'](conf);
       global.setTimeout(() => {
-        webSocketManagerInstance.dispatchEvent(
-          new CustomEvent('message', {
-            detail: JSON.stringify({
-              type: 'RoutingMessage',
-              data: {
-                type: 'AgentConsultFailed',
-                interactionId: 'intrid',
-              },
-            }),
+        webSocketManagerInstance.emit(
+          'message',
+          JSON.stringify({
+            type: 'RoutingMessage',
+            data: {
+              type: 'AgentConsultFailed',
+              interactionId: 'intrid',
+            },
           })
         );
       }, 0);
-
+    
       await expect(promise).rejects.toThrow('Custom error');
     });
 
     it('should handle request with notifCancel', async () => {
       httpRequestInstance.request.mockResolvedValueOnce(mockHttpRequestResolvedValue);
-
+    
       const conf = {
         host: 'fake-host',
         url: '/url',
@@ -528,24 +530,24 @@ describe('AqmReqs', () => {
         notifSuccess: {
           bind: {
             type: 'RoutingMessage',
-            data: {type: 'AgentConsultCreated', interactionId: 'intrid'},
+            data: { type: 'AgentConsultCreated', interactionId: 'intrid' },
           },
         },
         notifFail: {
           bind: {
             type: 'RoutingMessage',
-            data: {type: 'AgentConsultFailed'},
+            data: { type: 'AgentConsultFailed' },
           },
           errId: 'Service.aqm.contact.consult',
         },
         notifCancel: {
           bind: {
             type: 'RoutingMessage',
-            data: {type: 'AgentCtqCancelled', interactionId: 'intrid'},
+            data: { type: 'AgentCtqCancelled', interactionId: 'intrid' },
           },
         },
       };
-
+    
       const promise = aqm['createPromise'](conf);
       const eventData = {
         type: 'RoutingMessage',
@@ -555,13 +557,12 @@ describe('AqmReqs', () => {
         },
       };
       global.setTimeout(() => {
-        webSocketManagerInstance.dispatchEvent(
-          new CustomEvent('message', {
-            detail: JSON.stringify(eventData),
-          })
+        webSocketManagerInstance.emit(
+          'message',
+          JSON.stringify(eventData)
         );
       }, 0);
-
+    
       const result = await promise;
       expect(result).toEqual(eventData);
     });

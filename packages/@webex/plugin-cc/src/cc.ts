@@ -14,27 +14,25 @@ import {
   SubscribeRequest,
 } from './types';
 import {READY, CC_FILE, EMPTY_STRING} from './constants';
-import HttpRequest from './services/core/HttpRequest';
 import WebCallingService from './services/WebCallingService';
 import {AGENT, WEB_RTC_PREFIX} from './services/constants';
-import {WebSocketManager} from './services/core/WebSocket/WebSocketManager';
 import Services from './services';
+import HttpRequest from './services/core/HttpRequest';
 import LoggerProxy from './logger-proxy';
 import {StateChange, Logout} from './services/agent/types';
-import {ConnectionService} from './services/core/WebSocket/connection-service';
 import {getErrorDetails} from './services/core/Utils';
 import {Profile, WelcomeEvent} from './services/config/types';
+import {AGENT_STATE_AVAILABLE} from './services/config/constants';
+import {ConnectionLostDetails} from './services/core/WebSocket/types';
 
 export default class ContactCenter extends WebexPlugin implements IContactCenter {
   namespace = 'cc';
   private $config: CCPluginConfig;
   private $webex: WebexSDK;
   private agentConfig: Profile;
-  private httpRequest: HttpRequest;
-  private webSocketManager: WebSocketManager;
   private webCallingService: WebCallingService;
-  private connectionService: ConnectionService;
   private services: Services;
+  private httpRequest: HttpRequest;
 
   constructor(...args) {
     super(...args);
@@ -53,15 +51,9 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
         webex: this.$webex,
       });
 
-      this.webSocketManager = new WebSocketManager({webex: this.$webex});
-
-      this.connectionService = new ConnectionService(
-        this.webSocketManager,
-        this.getConnectionConfig()
-      );
-
       this.services = Services.getInstance({
-        webSocketManager: this.webSocketManager,
+        webex: this.$webex,
+        connectionConfig: this.getConnectionConfig(),
       });
 
       this.webCallingService = new WebCallingService(this.$webex, this.$config.callingClientConfig);
@@ -75,6 +67,8 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
    */
   public async register(): Promise<Profile> {
     try {
+      this.setupEventListeners();
+
       return await this.connectWebsocket();
     } catch (error) {
       this.$webex.logger.error(`file: ${CC_FILE}: Error during register: ${error}`);
@@ -97,7 +91,8 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
         data: {agentProfileId: this.agentConfig.agentProfileID, ...data},
       });
     } catch (error) {
-      throw getErrorDetails(error, 'getBuddyAgents');
+      const {error: detailedError} = getErrorDetails(error, 'getBuddyAgents');
+      throw detailedError;
     }
   }
 
@@ -109,7 +104,7 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
    */
   private async connectWebsocket() {
     try {
-      return this.webSocketManager
+      return this.services.webSocketManager
         .initWebSocket({
           body: this.getConnectionConfig(),
         })
@@ -118,6 +113,9 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
           const orgId = this.$webex.credentials.getOrgId();
           this.agentConfig = await this.services.config.getAgentConfig(orgId, agentId);
           this.$webex.logger.log(`file: ${CC_FILE}: agent config is fetched successfully`);
+          if (this.$config && this.$config.allowAutomatedRelogin) {
+            await this.silentRelogin();
+          }
 
           return this.agentConfig;
         })
@@ -164,7 +162,8 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
 
       return loginResponse;
     } catch (error) {
-      throw getErrorDetails(error, 'stationLogin');
+      const {error: detailedError} = getErrorDetails(error, 'stationLogin');
+      throw detailedError;
     }
   }
 
@@ -187,7 +186,8 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
 
       return logoutResponse;
     } catch (error) {
-      throw getErrorDetails(error, 'stationLogout');
+      const {error: detailedError} = getErrorDetails(error, 'stationLogout');
+      throw detailedError;
     }
   }
 
@@ -201,7 +201,8 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
 
       return reLoginResponse;
     } catch (error) {
-      throw getErrorDetails(error, 'stationReLogin');
+      const {error: detailedError} = getErrorDetails(error, 'stationReLogin');
+      throw detailedError;
     }
   }
 
@@ -230,8 +231,16 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
 
       return agentStatusResponse;
     } catch (error) {
-      throw getErrorDetails(error, 'setAgentState');
+      const {error: detailedError} = getErrorDetails(error, 'setAgentState');
+      throw detailedError;
     }
+  }
+
+  /**
+   * For setting up the Event Emitter listeners and handlers
+   */
+  private setupEventListeners() {
+    this.services.connectionService.on('connectionLost', this.handleConnectionLost.bind(this));
   }
 
   /**
@@ -244,5 +253,56 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
       clientType: this.$config?.clientType ?? 'WebexCCSDK',
       allowMultiLogin: this.$config?.allowMultiLogin ?? true,
     };
+  }
+
+  /**
+   * Called when we reconnection has been completed
+   */
+  private async handleConnectionLost(msg: ConnectionLostDetails): Promise<void> {
+    if (msg.isConnectionLost) {
+      // TODO: Emit an event saying connection is lost
+      this.$webex.logger.info('event=handleConnectionLost | Connection lost');
+    } else if (msg.isSocketReconnected) {
+      // TODO: Emit an event saying connection is re-estabilished
+      this.$webex.logger.info(
+        'event=handleConnectionReconnect | Connection reconnected attempting to request silent relogin'
+      );
+      if (this.$config && this.$config.allowAutomatedRelogin) {
+        await this.silentRelogin();
+      }
+    }
+  }
+
+  /**
+   * Called when we finish registration to silently handle the errors
+   */
+  private async silentRelogin(): Promise<void> {
+    try {
+      const reLoginResponse = await this.services.agent.reload();
+      const {auxCodeId, agentId, lastStateChangeReason} = reLoginResponse.data;
+
+      if (lastStateChangeReason === 'agent-wss-disconnect') {
+        this.$webex.logger.info(
+          'event=requestAutoStateChange | Requesting state change to available on socket reconnect'
+        );
+        const stateChangeData: StateChange = {
+          state: AGENT_STATE_AVAILABLE,
+          auxCodeId,
+          lastStateChangeReason,
+          agentId,
+        };
+        await this.setAgentState(stateChangeData);
+      }
+      // Updating isAgentLoggedIn as true to indicate to the end user
+      this.agentConfig.isAgentLoggedIn = true;
+    } catch (error) {
+      const {reason, error: detailedError} = getErrorDetails(error, 'silentReLogin');
+      if (reason === 'AGENT_NOT_FOUND') {
+        this.$webex.logger.info('Agent not found during re-login, handling silently');
+
+        return;
+      }
+      throw detailedError;
+    }
   }
 }

@@ -1,11 +1,13 @@
+import EventEmitter from 'events';
 import {WebexSDK, SubscribeRequest, HTTP_METHODS} from '../../../types';
 import {SUBSCRIBE_API, WCC_API_GATEWAY} from '../../constants';
+import {ConnectionLostDetails} from './types';
 import {SubscribeResponse, WelcomeResponse} from '../../config/types';
 import LoggerProxy from '../../../logger-proxy';
 import workerScript from './keepalive.worker';
 import {KEEPALIVE_WORKER_INTERVAL, CLOSE_SOCKET_TIMEOUT} from '../constants';
 
-export class WebSocketManager extends EventTarget {
+export class WebSocketManager extends EventEmitter {
   private websocket: WebSocket;
   shouldReconnect: boolean;
   isSocketClosed: boolean;
@@ -57,6 +59,10 @@ export class WebSocketManager extends EventTarget {
         `[WebSocketStatus] | event=webSocketClose | WebSocket connection closed manually REASON: ${reason}`
       );
     }
+  }
+
+  handleConnectionLost(event: ConnectionLostDetails) {
+    this.isConnectionLost = event.isConnectionLost;
   }
 
   private async register(connectionConfig: SubscribeRequest) {
@@ -124,7 +130,7 @@ export class WebSocketManager extends EventTarget {
       };
 
       this.websocket.onmessage = (e: MessageEvent) => {
-        this.dispatchEvent(new CustomEvent('message', {detail: e.data}));
+        this.emit('message', e.data);
         const eventData = JSON.parse(e.data);
 
         if (eventData.type === 'Welcome') {
@@ -150,7 +156,7 @@ export class WebSocketManager extends EventTarget {
     this.isSocketClosed = true;
     this.keepaliveWorker.postMessage({type: 'terminate'});
     if (this.shouldReconnect) {
-      this.dispatchEvent(new Event('socketClose'));
+      this.emit('socketClose');
       let issueReason;
       if (this.forceCloseWebSocketOnTimeout) {
         issueReason = 'WebSocket auto close timed out. Forcefully closed websocket.';

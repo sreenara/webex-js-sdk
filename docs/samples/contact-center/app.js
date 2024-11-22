@@ -140,6 +140,10 @@ function register() {
           agentLogin.add(option);
         });
 
+        if (agentProfile.isAgentLoggedIn) {
+          logoutAgentElm.classList.remove('hidden');
+        }
+
         const idleCodesList = agentProfile.idleCodes;
         
         if(idleCodesList.length > 0) setAgentStatusButton.disabled = false;
@@ -174,21 +178,8 @@ function doAgentLogin() {
   webex.cc.stationLogin({teamId: teamsDropdown.value, loginOption: agentDeviceType, dialNumber: dialNumber.value}).then((response) => {
     console.log('Agent Logged in successfully', response);
     logoutAgentElm.classList.remove('hidden');
-    // Re-Login Agent after 15 seconds for testing purpose
-    setTimeout(async () => {
-      try {
-        const response = await webex.cc.stationReLogin();
-
-        console.log('Agent Re-Login successful', response);
-      } catch (error) {
-        console.log('Agent Re-Login failed', error);
-      }
-    }, 15000);
   }
   ).catch((error) => {
-    if (error.message === 'AGENT_SESSION_ALREADY_EXISTS') {
-      logoutAgentElm.classList.remove('hidden');
-    }
     console.log('Agent Login failed', error);
   });
 }
