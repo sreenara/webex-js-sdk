@@ -1,15 +1,3 @@
-/* eslint-disable no-underscore-dangle */
-/* eslint-env browser */
-
-/* global Webex */
-
-/* eslint-disable require-jsdoc */
-/* eslint-disable no-unused-vars */
-/* eslint-disable no-console */
-/* eslint-disable no-global-assign */
-/* eslint-disable no-multi-assign */
-/* eslint-disable max-len */
-
 // Globals
 let webex;
 let sdk;
@@ -21,6 +9,7 @@ let agentId;
 let taskControl;
 let task;
 let taskId;
+let wrapupCodes = []; // Add this to store wrapup codes
 
 const authTypeElm = document.querySelector('#auth-type');
 const credentialsFormElm = document.querySelector('#credentials');
@@ -42,6 +31,12 @@ const incomingDetailsElm = document.querySelector('#incoming-call');
 const answerElm = document.querySelector('#answer');
 const declineElm = document.querySelector('#decline');
 const callControlListener = document.querySelector('#callcontrolsection');
+const holdResumeElm = document.querySelector('#hold-resume');
+const pauseResumeRecordingElm = document.querySelector('#pause-resume-recording');
+const endElm = document.querySelector('#end');
+const wrapupElm = document.querySelector('#wrapup');
+const wrapupCodesDropdownElm = document.querySelector('#wrapupCodesDropdown');
+const autoResumeCheckboxElm = document.querySelector('#auto-resume-checkbox'); // Add this
 
 // Store and Grab `access-token` from sessionStorage
 if (sessionStorage.getItem('date') > new Date().getTime()) {
@@ -84,14 +79,32 @@ const taskEvents = new CustomEvent('task:incoming', {
   },
 });
 
-// TODO: Activate the call control buttons once the call is accepted and refctor this
+function updateButtonsPostEndCall() {
+  holdResumeElm.disabled = true;
+  endElm.disabled = true;
+  pauseResumeRecordingElm.disabled = true;
+  wrapupElm.disabled = false;
+  wrapupCodesDropdownElm.disabled = false;
+}
+
 function registerTaskListeners(task) {
   task.on('task:assigned', (task) => {
-    console.log('Call has been accepted for task: ', task.data.interactionId);
-  }) 
+    console.info('Call has been accepted for task: ', task.data.interactionId);
+    holdResumeElm.disabled = false;
+    holdResumeElm.innerText = 'Hold';
+    pauseResumeRecordingElm.disabled = false;
+    pauseResumeRecordingElm.innerText = 'Pause Recording';
+    endElm.disabled = false;
+  });
   task.on('task:media', (track) => {
     document.getElementById('remote-audio').srcObject = new MediaStream([track]);
-  })
+  });
+  task.on('task:end', (task) => {
+    if (!endElm.disabled) {
+      console.info('Call ended successfully by the external user');
+      updateButtonsPostEndCall();
+    }
+  });
 }
 
 function generateWebexConfig({credentials}) {
@@ -146,6 +159,8 @@ function register() {
         teamsDropdown.innerHTML = ''; // Clear previously selected option on teamsDropdown
         const listTeams = agentProfile.teams;
         agentId = agentProfile.agentId;
+        wrapupCodes = agentProfile.wrapupCodes;
+        populateWrapupCodesDropdown();
         listTeams.forEach((team) => {
             const option = document.createElement('option');
             option.value = team.id;
@@ -166,6 +181,7 @@ function register() {
         });
 
         if (agentProfile.isAgentLoggedIn) {
+          loginAgentElm.disabled = true;
           logoutAgentElm.classList.remove('hidden');
         }
 
@@ -189,7 +205,17 @@ function register() {
       taskEvents.detail.task = task;
       
       incomingCallListener.dispatchEvent(taskEvents);
-    }) 
+    })
+}
+
+function populateWrapupCodesDropdown() {
+  wrapupCodesDropdownElm.innerHTML = ''; // Clear previous options
+  wrapupCodes.forEach((code) => {
+    const option = document.createElement('option');
+    option.text = code.name;
+    option.value = code.id;
+    wrapupCodesDropdownElm.add(option);
+  });
 }
 
 async function handleAgentLogin(e) {
@@ -366,3 +392,79 @@ function expandAll() {
   });
 }
 
+function holdResumeCall() {
+  if (holdResumeElm.innerText === 'Hold') {
+    holdResumeElm.disabled = true;
+    task.hold().then(() => {
+      console.info('Call held successfully');
+      holdResumeElm.innerText = 'Resume';
+      holdResumeElm.disabled = false;
+    }).catch((error) => {
+      console.error('Failed to hold the call', error);
+      holdResumeElm.disabled = false;
+    });
+  } else {
+    holdResumeElm.disabled = true;
+    task.resume().then(() => {
+      console.info('Call resumed successfully');
+      holdResumeElm.innerText = 'Hold';
+      holdResumeElm.disabled = false;
+    }).catch((error) => {
+      console.error('Failed to resume the call', error);
+      holdResumeElm.disabled = false;
+    });
+  }
+}
+
+function togglePauseResumeRecording() {
+  const autoResumed = autoResumeCheckboxElm.checked;
+  if (pauseResumeRecordingElm.innerText === 'Pause Recording') {
+    pauseResumeRecordingElm.disabled = true;
+    task.pauseRecording().then(() => {
+      console.info('Recording paused successfully');
+      pauseResumeRecordingElm.innerText = 'Resume Recording';
+      pauseResumeRecordingElm.disabled = false;
+      autoResumeCheckboxElm.disabled = false;
+    }).catch((error) => {
+      console.error('Failed to pause recording', error);
+      pauseResumeRecordingElm.disabled = false;
+    });
+  } else {
+    pauseResumeRecordingElm.disabled = true;
+    task.resumeRecording({ autoResumed: autoResumed }).then(() => {
+      console.info('Recording resumed successfully');
+      pauseResumeRecordingElm.innerText = 'Pause Recording';
+      pauseResumeRecordingElm.disabled = false;
+      autoResumeCheckboxElm.disabled = true;
+    }).catch((error) => {
+      console.error('Failed to resume recording', error);
+      pauseResumeRecordingElm.disabled = false;
+    });
+  }
+}
+
+function endCall() {
+  endElm.disabled = true;
+  task.end().then(() => {
+    console.log('Call ended successfully by agent');
+    updateButtonsPostEndCall();
+  }).catch((error) => {
+    console.error('Failed to end the call', error);
+    endElm.disabled = false;
+  });
+}
+
+function wrapupCall() {
+  wrapupElm.disabled = true;
+  const wrapupReason = wrapupCodesDropdownElm.options[wrapupCodesDropdownElm.selectedIndex].text;
+  const auxCodeId = wrapupCodesDropdownElm.options[wrapupCodesDropdownElm.selectedIndex].value;
+  task.wrapup({wrapUpReason: wrapupReason, auxCodeId: auxCodeId}).then(() => {
+    console.info('Call wrapped up successfully');
+    holdResumeElm.disabled = true;
+    endElm.disabled = true;
+    wrapupCodesDropdownElm.disabled = true;
+  }).catch((error) => {
+    console.error('Failed to wrap up the call', error);
+    wrapupElm.disabled = false;
+  });
+}

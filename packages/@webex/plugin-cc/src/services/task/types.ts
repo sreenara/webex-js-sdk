@@ -1,4 +1,5 @@
 import {CallId} from '@webex/calling/dist/types/common/types';
+import EventEmitter from 'events';
 import {Msg} from '../core/GlobalTypes';
 
 export type TaskId = string;
@@ -327,7 +328,7 @@ export type TaskResponse = AgentContact | Error | void;
 /**
  * Represents an interface for managing task related operations.
  */
-export interface ITask {
+export interface ITask extends EventEmitter {
   /**
    * Event data received in the CC events
    */
@@ -362,5 +363,61 @@ export interface ITask {
    * ```
    */
   decline(taskId: TaskId): Promise<TaskResponse>;
-  // TODO: Add the remianing public methods
+  /**
+   * This is used to hold the task.
+   * @param taskId
+   * @returns Promise<TaskResponse>
+   * @example
+   * ```
+   * task.hold();
+   * ```
+   */
+  hold(): Promise<TaskResponse>;
+  /**
+   * This is used to resume the task.
+   * @returns Promise<TaskResponse>
+   * @example
+   * ```
+   * task.resume();
+   * ```
+   */
+  resume(): Promise<TaskResponse>;
+  /**
+   * This is used to end the task.
+   * @returns Promise<TaskResponse>
+   * @example
+   * ```
+   * task.end();
+   * ```
+   */
+  end(): Promise<TaskResponse>;
+  /**
+   * This is used to wrap up the task.
+   * @param wrapupPayload
+   * @returns Promise<TaskResponse>
+   * @example
+   * ```
+   * task.wrapup(data);
+   * ```
+   */
+  wrapup(wrapupPayload: WrapupPayLoad): Promise<TaskResponse>;
+  /**
+   * This is used to pause the call recording.
+   * @returns Promise<TaskResponse>
+   * @example
+   * ```
+   * task.wrapup();
+   * ```
+   */
+  pauseRecording(): Promise<TaskResponse>;
+  /**
+   * This is used to resume the call recording.
+   * @param resumeRecordingPayload
+   * @returns Promise<TaskResponse>
+   * @example
+   * ```
+   * task.resumeRecording();
+   * ```
+   */
+  resumeRecording(resumeRecordingPayload: ResumeRecordingPayload): Promise<TaskResponse>;
 }

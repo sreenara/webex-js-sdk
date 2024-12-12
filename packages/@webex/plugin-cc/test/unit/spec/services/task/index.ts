@@ -7,7 +7,7 @@ import * as Utils from '../../../../../src/services/core/Utils';
 import { CC_EVENTS } from '../../../../../src/services/config/types';
 import config from '../../../../../src/config';
 import WebCallingService from '../../../../../src/services/WebCallingService';
-import { TASK_EVENTS } from '../../../../../src/services/task/types';
+import { TASK_EVENTS, TaskResponse, AgentContact } from '../../../../../src/services/task/types';
 
 jest.mock('@webex/calling');
 
@@ -39,6 +39,12 @@ describe('Task', () => {
     
     contactMock = {
       accept: jest.fn().mockResolvedValue({}),
+      hold: jest.fn().mockResolvedValue({}),
+      unHold: jest.fn().mockResolvedValue({}),
+      end: jest.fn().mockResolvedValue({}),
+      wrapup: jest.fn().mockResolvedValue({}),
+      pauseRecording: jest.fn().mockResolvedValue({}),
+      resumeRecording: jest.fn().mockResolvedValue({})
     };
 
     webCallingService = new WebCallingService(
@@ -182,4 +188,179 @@ describe('Task', () => {
     await expect(task.decline()).rejects.toThrow(new Error(error.details.data.reason));
     expect(getErrorDetailsSpy).toHaveBeenCalledWith(error, 'decline', CC_FILE);
   }); 
+
+  it('should hold the task and return the expected response', async () => {
+    const expectedResponse: TaskResponse = { data: { interactionId: taskId } } as AgentContact;
+    contactMock.hold.mockResolvedValue(expectedResponse);
+  
+    const response = await task.hold();
+  
+    expect(contactMock.hold).toHaveBeenCalledWith({ interactionId: taskId, data: { mediaResourceId: taskDataMock.mediaResourceId } });
+    expect(response).toEqual(expectedResponse);
+  });
+
+  it('should handle errors in hold method', async () => {
+    const error = {
+      details: {
+        trackingId: '1234',
+        data: {
+          reason: 'Hold Failed',
+        },
+      },
+    };
+    contactMock.hold.mockImplementation(() => { throw error; });
+
+    await expect(task.hold()).rejects.toThrow(error.details.data.reason);
+    expect(getErrorDetailsSpy).toHaveBeenCalledWith(error, 'hold', CC_FILE);
+  });
+
+  it('should resume the task and return the expected response', async () => {
+    const expectedResponse: TaskResponse = { data: { interactionId: taskId } } as AgentContact;
+    contactMock.unHold.mockResolvedValue(expectedResponse);
+  
+    const response = await task.resume();
+  
+    expect(contactMock.unHold).toHaveBeenCalledWith({ interactionId: taskId, data: { mediaResourceId: taskDataMock.mediaResourceId } });
+    expect(response).toEqual(expectedResponse);
+  });
+
+  it('should handle errors in resume method', async () => {
+    const error = {
+      details: {
+        trackingId: '1234',
+        data: {
+          reason: 'Resume Failed',
+        },
+      },
+    };
+    contactMock.unHold.mockImplementation(() => { throw error; });
+
+    await expect(task.resume()).rejects.toThrow(error.details.data.reason);
+    expect(getErrorDetailsSpy).toHaveBeenCalledWith(error, 'resume', CC_FILE);
+  });
+
+  it('should end the task and return the expected response', async () => {
+    const expectedResponse: TaskResponse = { data: { interactionId: taskId } } as AgentContact;
+    contactMock.end.mockResolvedValue(expectedResponse);
+  
+    const response = await task.end();
+  
+    expect(contactMock.end).toHaveBeenCalledWith({ interactionId: taskId });
+    expect(response).toEqual(expectedResponse);
+  });
+
+  it('should handle errors in end method', async () => {
+    const error = {
+      details: {
+        trackingId: '1234',
+        data: {
+          reason: 'End Failed',
+        },
+      },
+    };
+    contactMock.end.mockImplementation(() => { throw error; });
+
+    await expect(task.end()).rejects.toThrow(error.details.data.reason);
+    expect(getErrorDetailsSpy).toHaveBeenCalledWith(error, 'end', CC_FILE);
+  });
+
+  it('should wrap up the task and return the expected response', async () => {
+    const expectedResponse: TaskResponse = { data: { interactionId: taskId } } as AgentContact;
+    const wrapupPayload = {
+      wrapUpReason: 'Customer request',
+      auxCodeId: 'auxCodeId123'
+    };
+    contactMock.wrapup.mockResolvedValue(expectedResponse);
+  
+    const response = await task.wrapup(wrapupPayload);
+  
+    expect(contactMock.wrapup).toHaveBeenCalledWith({ interactionId: taskId, data: wrapupPayload });
+    expect(response).toEqual(expectedResponse);
+  });
+
+  it('should handle errors in wrapup method', async () => {
+    const error = {
+      details: {
+        trackingId: '1234',
+        data: {
+          reason: 'Wrapup Failed',
+        },
+      },
+    };
+    contactMock.wrapup.mockImplementation(() => { throw error; });
+
+    const wrapupPayload = {
+      wrapUpReason: 'Customer request',
+      auxCodeId: 'auxCodeId123'
+    };
+
+    await expect(task.wrapup(wrapupPayload)).rejects.toThrow(error.details.data.reason);
+    expect(getErrorDetailsSpy).toHaveBeenCalledWith(error, 'wrapup', CC_FILE);
+  });
+
+  it('should throw an error if auxCodeId is missing in wrapup method', async () => {
+    const wrapupPayload = {
+      wrapUpReason: 'Customer request',
+      auxCodeId: ''
+    };
+    await expect(task.wrapup(wrapupPayload)).rejects.toThrow();
+  });
+  
+  it('should throw an error if wrapUpReason is missing in wrapup method', async () => {
+    const wrapupPayload = {
+      wrapUpReason: '',
+      auxCodeId: 'auxCodeId123'
+    };
+    await expect(task.wrapup(wrapupPayload)).rejects.toThrow();
+  });
+
+  it('should pause the recording of the task', async () => {
+    await task.pauseRecording();
+  
+    expect(contactMock.pauseRecording).toHaveBeenCalledWith({ interactionId: taskId });
+  });
+  
+  it('should handle errors in pauseRecording method', async () => {
+    const error = {
+      details: {
+        trackingId: '1234',
+        data: {
+          reason: 'Pause Recording Failed',
+        },
+      },
+    };
+    contactMock.pauseRecording.mockImplementation(() => { throw error; });
+  
+    await expect(task.pauseRecording()).rejects.toThrow(error.details.data.reason);
+    expect(getErrorDetailsSpy).toHaveBeenCalledWith(error, 'pauseRecording', CC_FILE);
+  });
+  
+  it('should resume the recording of the task', async () => {
+    const resumePayload = {
+      autoResumed: true
+    };
+  
+    await task.resumeRecording(resumePayload);
+  
+    expect(contactMock.resumeRecording).toHaveBeenCalledWith({ interactionId: taskId, data: resumePayload });
+  });
+  
+  it('should handle errors in resumeRecording method', async () => {
+    const error = {
+      details: {
+        trackingId: '1234',
+        data: {
+          reason: 'Resume Recording Failed',
+        },
+      },
+    };
+    contactMock.resumeRecording.mockImplementation(() => { throw error; });
+  
+    const resumePayload = {
+      autoResumed: true
+    };
+  
+    await expect(task.resumeRecording(resumePayload)).rejects.toThrow(error.details.data.reason);
+    expect(getErrorDetailsSpy).toHaveBeenCalledWith(error, 'resumeRecording', CC_FILE);
+  });
 });

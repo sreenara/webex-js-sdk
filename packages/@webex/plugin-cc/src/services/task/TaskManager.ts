@@ -4,8 +4,10 @@ import {WebSocketManager} from '../core/websocket/WebSocketManager';
 import routingContact from './contact';
 import WebCallingService from '../WebCallingService';
 import {ITask, TASK_EVENTS, TaskId} from './types';
+import {TASK_MANAGER_FILE} from '../../constants';
 import {CC_EVENTS} from '../config/types';
 import {LoginOption} from '../../types';
+import LoggerProxy from '../../logger-proxy';
 import Task from '.';
 
 export default class TaskManager extends EventEmitter {
@@ -68,7 +70,7 @@ export default class TaskManager extends EventEmitter {
             break;
           case CC_EVENTS.AGENT_CONTACT_ASSIGNED:
             this.currentTask = this.currentTask.updateTaskData(payload.data);
-            this.emit(TASK_EVENTS.TASK_ASSIGNED, this.currentTask);
+            this.currentTask.emit(TASK_EVENTS.TASK_ASSIGNED, this.currentTask);
             break;
           case CC_EVENTS.CONTACT_ENDED:
             this.emit(TASK_EVENTS.TASK_UNASSIGNED, this.currentTask);
@@ -77,11 +79,28 @@ export default class TaskManager extends EventEmitter {
               this.webCallingService.unregisterCallListeners();
             }
             break;
+          case CC_EVENTS.AGENT_WRAPUP:
+            this.currentTask = this.currentTask.updateTaskData(payload.data);
+            this.currentTask.emit(TASK_EVENTS.TASK_END, this.currentTask);
+            break;
+          case CC_EVENTS.AGENT_WRAPPEDUP:
+            this.removeCurrentTaskFromCollection();
+            break;
           default:
             break;
         }
       }
     });
+  }
+
+  private removeCurrentTaskFromCollection() {
+    if (this.currentTask && this.currentTask.data && this.currentTask.data.interactionId) {
+      delete this.taskCollection[this.currentTask.data.interactionId];
+      LoggerProxy.info(`Task removed from collection: ${this.currentTask.data.interactionId}`, {
+        module: TASK_MANAGER_FILE,
+        method: 'removeCurrentTaskFromCollection',
+      });
+    }
   }
 
   /**
