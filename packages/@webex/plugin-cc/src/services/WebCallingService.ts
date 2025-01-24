@@ -17,13 +17,16 @@ export default class WebCallingService extends EventEmitter {
   private callingClient: ICallingClient;
   private callingClientConfig: CallingClientConfig;
   private line: ILine;
-  private call: ICall;
+  private call: ICall | undefined;
   private webex: WebexSDK;
   public loginOption: LoginOption;
+  private callTaskMap: Map<string, string>;
+
   constructor(webex: WebexSDK, callingClientConfig: CallingClientConfig) {
     super();
     this.webex = webex;
     this.callingClientConfig = callingClientConfig;
+    this.callTaskMap = new Map();
   }
 
   public setLoginOption(loginOption: LoginOption) {
@@ -34,14 +37,29 @@ export default class WebCallingService extends EventEmitter {
     this.emit(CALL_EVENT_KEYS.REMOTE_MEDIA, track);
   };
 
+  private handleDisconnectEvent = () => {
+    this.call.end();
+    this.cleanUpCall();
+  };
+
   private registerCallListeners() {
     // TODO: Add remaining call listeners here
     this.call.on(CALL_EVENT_KEYS.REMOTE_MEDIA, this.handleMediaEvent);
+    this.call.on(CALL_EVENT_KEYS.DISCONNECT, this.handleDisconnectEvent);
   }
 
-  public unregisterCallListeners() {
-    // TODO: Once we handle disconnect or call end, switch off the call listeners
-    this.call.off(CALL_EVENT_KEYS.REMOTE_MEDIA, this.handleMediaEvent);
+  public cleanUpCall() {
+    if (this.call) {
+      this.call.off(CALL_EVENT_KEYS.REMOTE_MEDIA, this.handleMediaEvent);
+      this.call.off(CALL_EVENT_KEYS.DISCONNECT, this.handleDisconnectEvent);
+      const callId = this.call.getCallId();
+      const taskId = this.getTaskIdForCall(callId);
+
+      if (taskId) {
+        this.callTaskMap.delete(callId);
+      }
+      this.call = null;
+    }
   }
 
   public async registerWebCallingLine(): Promise<void> {
@@ -120,7 +138,7 @@ export default class WebCallingService extends EventEmitter {
       try {
         this.webex.logger.info(`Call end requested: ${taskId}`);
         this.call.end();
-        this.unregisterCallListeners();
+        this.cleanUpCall();
       } catch (error) {
         this.webex.logger.error(`Failed to end call: ${taskId}. Error: ${error}`);
         // Optionally, throw the error to allow the invoker to handle it
@@ -129,5 +147,13 @@ export default class WebCallingService extends EventEmitter {
     } else {
       this.webex.logger.log(`Cannot end a non WebRtc Call: ${taskId}`);
     }
+  }
+
+  public mapCallToTask(callId: string, taskId: string) {
+    this.callTaskMap.set(callId, taskId);
+  }
+
+  public getTaskIdForCall(callId: string): string | undefined {
+    return this.callTaskMap.get(callId);
   }
 }

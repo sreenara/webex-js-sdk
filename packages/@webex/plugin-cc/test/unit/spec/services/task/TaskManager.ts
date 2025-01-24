@@ -67,6 +67,7 @@ describe('TaskManager', () => {
       mute: jest.fn(),
       isMuted: jest.fn().mockReturnValue(true),
       end: jest.fn(),
+      getCallId: jest.fn().mockReturnValue('call-id-123'),
     };
 
     webCallingService.loginOption = LoginOption.BROWSER;
@@ -542,6 +543,54 @@ describe('TaskManager', () => {
       TASK_EVENTS.TASK_CONSULT_QUEUE_FAILED,
       taskManager.currentTask
     );
+  });
+
+  it('should emit TASK_REJECT event on AGENT_CONTACT_OFFER_RONA event', () => {
+    // First, emit AGENT_CONTACT_RESERVED to set up currentTask
+    const reservedPayload = {
+      data: {
+        type: CC_EVENTS.AGENT_CONTACT_RESERVED,
+        agentId: "723a8ffb-a26e-496d-b14a-ff44fb83b64f",
+        eventTime: 1733211616959,
+        eventType: "RoutingMessage",
+        interaction: {},
+        interactionId: taskId,
+        orgId: "6ecef209-9a34-4ed1-a07a-7ddd1dbe925a",
+        trackingId: "575c0ec2-618c-42af-a61c-53aeb0a221ee",
+        mediaResourceId: '0ae913a4-c857-4705-8d49-76dd3dde75e4',
+        destAgentId: 'ebeb893b-ba67-4f36-8418-95c7492b28c2',
+        owner: '723a8ffb-a26e-496d-b14a-ff44fb83b64f',
+        queueMgr: 'aqm',
+      },
+    };
+  
+    webSocketManagerMock.emit('message', JSON.stringify(reservedPayload));
+  
+    const ronaPayload = {
+      data: {
+        type: CC_EVENTS.AGENT_CONTACT_OFFER_RONA,
+        agentId: "723a8ffb-a26e-496d-b14a-ff44fb83b64f",
+        eventTime: 1733211616959,
+        eventType: "RoutingMessage",
+        interaction: {},
+        interactionId: taskId,
+        orgId: "6ecef209-9a34-4ed1-a07a-7ddd1dbe925a",
+        trackingId: "575c0ec2-618c-42af-a61c-53aeb0a221ee",
+        mediaResourceId: '0ae913a4-c857-4705-8d49-76dd3dde75e4',
+        destAgentId: 'ebeb893b-ba67-4f36-8418-95c7492b28c2',
+        owner: '723a8ffb-a26e-496d-b14a-ff44fb83b64f',
+        queueMgr: 'aqm',
+        reason: 'USER_REJECTED',
+      },
+    };
+  
+    taskManager.taskCollection[taskId] = taskManager.currentTask;
+    const taskEmitSpy = jest.spyOn(taskManager.currentTask, 'emit');
+  
+    webSocketManagerMock.emit('message', JSON.stringify(ronaPayload));
+  
+    expect(taskEmitSpy).toHaveBeenCalledWith(TASK_EVENTS.TASK_REJECT, ronaPayload.data.reason);
+    expect(taskManager.getTask(taskId)).toBeUndefined();
   });
 
   it('should remove currentTask from taskCollection on AGENT_WRAPPEDUP event', () => {

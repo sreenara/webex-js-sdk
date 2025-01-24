@@ -40,7 +40,10 @@ const pauseResumeRecordingElm = document.querySelector('#pause-resume-recording'
 const endElm = document.querySelector('#end');
 const wrapupElm = document.querySelector('#wrapup');
 const wrapupCodesDropdownElm = document.querySelector('#wrapupCodesDropdown');
-const autoResumeCheckboxElm = document.querySelector('#auto-resume-checkbox'); // Add this
+const autoResumeCheckboxElm = document.querySelector('#auto-resume-checkbox');
+const agentStateSelect = document.querySelector('#agentStateSelect');
+const popup = document.querySelector('#agentStatePopup');
+const setAgentStateButton = document.getElementById('setAgentState');
 const consultOptionsElm = document.querySelector('#consult-options');
 const destinationTypeDropdown = document.querySelector('#consult-destination-type');
 const consultDestinationHolderElm = document.querySelector('#consult-destination-holder');
@@ -67,6 +70,13 @@ else {
 tokenElm.addEventListener('change', (event) => {
   sessionStorage.setItem('access-token', event.target.value);
   sessionStorage.setItem('date', new Date().getTime() + (12 * 60 * 60 * 1000));
+});
+
+setAgentStateButton.addEventListener('click', () => {
+  agentStatus = agentStateSelect.options[agentStateSelect.selectedIndex].text;
+  auxCodeId = agentStateSelect.options[agentStateSelect.selectedIndex].value;
+  setAgentStatus();
+  popup.classList.add('hidden');
 });
 
 function changeAuthType() {
@@ -461,6 +471,15 @@ function registerTaskListeners(task) {
       task = undefined;
     }
   });
+  task.on('task:rejected', (reason) => {
+    console.info('Adhwaith', reason);
+    if (reason === 'RONA_TIMER_EXPIRED') {
+      answerElm.disabled = true;
+      declineElm.disabled = true;
+      incomingDetailsElm.innerText = 'No incoming calls';
+    }
+    showAgentStatePopup(reason);
+  });
 }
 
 function generateWebexConfig({credentials}) {
@@ -647,6 +666,29 @@ function logoutAgent() {
   ).catch((error) => {
     console.log('Agent logout failed', error);
   });
+}
+
+function showAgentStatePopup(reason) {
+  const agentStateReasonText = document.getElementById('agentStateReasonText');
+  agentStateSelect.innerHTML = '';
+
+  // Set the reason text based on the reason
+  if (reason === 'USER_BUSY') {
+    agentStateReasonText.innerText = 'Agent declined call';
+  } else if (reason === 'RONA_TIMER_EXPIRED') {
+    agentStateReasonText.innerText = 'Agent unavailable';
+  } else {
+    agentStateReasonText.innerText = '';
+  }
+
+  for (let i = 0; i < idleCodesDropdown.options.length; i++) {
+    const option = document.createElement('option');
+    option.value = idleCodesDropdown.options[i].value;
+    option.text = idleCodesDropdown.options[i].text;
+    agentStateSelect.add(option);
+  }
+
+  popup.classList.remove('hidden');
 }
 
 async function renderBuddyAgents() {
