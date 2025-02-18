@@ -26,7 +26,7 @@ import {AGENT_STATE_AVAILABLE, AGENT_STATE_AVAILABLE_ID} from './services/config
 import {ConnectionLostDetails} from './services/core/websocket/types';
 import TaskManager from './services/task/TaskManager';
 import WebCallingService from './services/WebCallingService';
-import {ITask, TASK_EVENTS} from './services/task/types';
+import {ITask, TASK_EVENTS, DialerPayload, TaskResponse} from './services/task/types';
 
 export default class ContactCenter extends WebexPlugin implements IContactCenter {
   namespace = 'cc';
@@ -425,5 +425,35 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
     }
     this.webCallingService.setLoginOption(deviceType);
     this.agentConfig.deviceType = deviceType;
+  }
+
+  /**
+   * This is used for making the outdial call.
+   * @param outDialPayload
+   * @returns Promise<TaskResponse>
+   * @throws Error
+   * @example
+   * ```typescript
+   * const outDialPayload = {
+   *  entryPointId: entryPointId,
+      destination: destination,
+      direction: 'OUTBOUND',
+      attributes: {},
+      mediaType: 'telephony',
+      outboundType: 'OUTDIAL',
+   * }
+   * const result = await webex.cc.startOutdial(outDialPayload).then(()=>{}).catch(()=>{});
+   * ```
+   */
+
+  public async startOutdial(outDialPayload: DialerPayload): Promise<TaskResponse> {
+    try {
+      const result = await this.services.dialer.startOutdial({data: outDialPayload});
+
+      return result;
+    } catch (error) {
+      const {error: detailedError} = getErrorDetails(error, 'startOutdial', CC_FILE);
+      throw detailedError;
+    }
   }
 }

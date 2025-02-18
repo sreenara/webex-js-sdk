@@ -12,6 +12,7 @@ let taskId;
 let wrapupCodes = []; // Add this to store wrapup codes
 let isConsultOptionsShown = false;
 let isTransferOptionsShown = false; // Add this variable to track the state of transfer options
+let entryPointId = '';
 let stateTimer;
 
 const authTypeElm = document.querySelector('#auth-type');
@@ -382,6 +383,50 @@ async function endConsult() {
   }
 }
 
+// Function to start an outdial call.
+async function startOutdial() {
+
+  const destination = document.getElementById('outBoundDialNumber').value;
+
+  if (!destination || !destination.trim()) {
+      alert('Destination number is required');
+      return;
+  }
+
+  if (!entryPointId) {
+      alert('Entry point ID is not configured');
+      return;
+  }
+
+  const dialerPayload = {
+    entryPointId: entryPointId,
+    destination: destination,
+    direction: 'OUTBOUND',
+    attributes: {},
+    mediaType: 'telephony',
+    outboundType: 'OUTDIAL',
+  };
+
+  try {
+    console.log('Making an outdial call');
+    await webex.cc.startOutdial(dialerPayload);
+    console.log('Outdial call initiated successfully');
+  } catch (error) {
+    console.error('Failed to initiate outdial call', error);
+    alert('Failed to initiate outdial call');
+  }
+}
+
+// Function to press a key during an active call
+function pressKey(value) {
+    // Allow only digits, #, *, and +
+    if (!/^[\d#*+]$/.test(value)) {
+      console.warn('Invalid keypad input:', value);
+      return;
+    }
+  document.getElementById('outBoundDialNumber').value += value;
+}
+
 // Enable consult button after task is accepted
 function enableConsultControls() {
   consultTabBtn.disabled = false;
@@ -476,7 +521,7 @@ function registerTaskListeners(task) {
     }
   });
   task.on('task:rejected', (reason) => {
-    console.info('Adhwaith', reason);
+    console.info('Task is rejected with reason:', reason);
     if (reason === 'RONA_TIMER_EXPIRED') {
       answerElm.disabled = true;
       declineElm.disabled = true;
@@ -606,6 +651,7 @@ function register() {
             idleCodesDropdown.add(option);
           }
         });
+        entryPointId = agentProfile.outDialEp;
     }).catch((error) => {
         console.error('Event subscription failed', error);
     })

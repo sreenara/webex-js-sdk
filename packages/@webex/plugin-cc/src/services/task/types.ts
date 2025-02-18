@@ -349,6 +349,19 @@ export type WrapupPayLoad = {
   auxCodeId: string;
 };
 
+/**
+ * Parameters to be passed for outbound dialer task
+ */
+export type DialerPayload = {
+  entryPointId: string;
+  destination: string;
+  direction: string;
+  origin?: string;
+  attributes: {[key: string]: string};
+  mediaType: string;
+  outboundType: string;
+};
+
 export type ContactCleanupData = {
   type: string;
   orgId: string;
@@ -388,7 +401,7 @@ export interface ITask extends EventEmitter {
    */
   unregisterWebCallListeners(): void;
   /**
-   * Used to update the task the data received on each event
+   * Used to update the task when the data received on each event
    */
   updateTaskData(newData: TaskData): ITask;
   /**
