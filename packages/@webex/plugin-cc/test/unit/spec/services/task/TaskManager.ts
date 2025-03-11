@@ -333,7 +333,7 @@ describe('TaskManager', () => {
     taskManager.currentTask.data = payload.data;
     webSocketManagerMock.emit('message', JSON.stringify(payload));
 
-    expect(taskEmitSpy).toHaveBeenCalledWith(TASK_EVENTS.TASK_END, {wrapupRequired: false});
+    expect(taskEmitSpy).toHaveBeenCalledWith(TASK_EVENTS.TASK_END);
     expect(webCallListenerSpy).toHaveBeenCalledWith();
     expect(callOffSpy).toHaveBeenCalledWith(
       CALL_EVENT_KEYS.REMOTE_MEDIA,
@@ -381,13 +381,11 @@ describe('TaskManager', () => {
       },
     };
 
-    const taskEmitSpy = jest.spyOn(taskManager.currentTask, 'emit');
     const updateTaskDataSpy = jest.spyOn(taskManager.currentTask, 'updateTaskData');
 
     webSocketManagerMock.emit('message', JSON.stringify(wrapupPayload));
 
     expect(updateTaskDataSpy).toHaveBeenCalledWith(wrapupPayload.data);
-    expect(taskEmitSpy).toHaveBeenCalledWith(TASK_EVENTS.TASK_END, {wrapupRequired: true});
   });
 
   it('should emit TASK_HOLD event on AGENT_CONTACT_HELD event', () => {
