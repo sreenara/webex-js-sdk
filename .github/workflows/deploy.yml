@@ -5,6 +5,7 @@ on:
   push:
     branches: # White-list of deployable tags and branches. Note that all white-listed branches cannot include any `/` characters
       - next
+      - wxcc
 
 env:
   rid: ${{ github.run_id }}-${{ github.run_number }}
@@ -208,6 +209,7 @@ jobs:
     name: Publish - Documentation
     needs: [publish-npm,generate-package-matrix]
     runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/wxcc'
 
     steps:
       - name: Documentation Deploy Steps
