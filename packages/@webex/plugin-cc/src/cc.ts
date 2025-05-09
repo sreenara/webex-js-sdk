@@ -13,6 +13,7 @@ import {
   BuddyAgentsResponse,
   BuddyAgents,
   SubscribeRequest,
+  UploadLogsResponse,
 } from './types';
 import {
   READY,
@@ -24,10 +25,12 @@ import {
   ATTRIBUTES,
   OUTDIAL_MEDIA_TYPE,
   OUTBOUND_TYPE,
+  UNKNOWN_ERROR,
+  MERCURY_DISCONNECTED_SUCCESS,
 } from './constants';
 import {AGENT, WEB_RTC_PREFIX} from './services/constants';
 import Services from './services';
-import HttpRequest from './services/core/HttpRequest';
+import WebexRequest from './services/core/WebexRequest';
 import LoggerProxy from './logger-proxy';
 import {StateChange, Logout, StateChangeSuccess} from './services/agent/types';
 import {getErrorDetails} from './services/core/Utils';
@@ -60,7 +63,7 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
   private agentConfig: Profile;
   private webCallingService: WebCallingService;
   private services: Services;
-  private httpRequest: HttpRequest;
+  private webexRequest: WebexRequest;
   private taskManager: TaskManager;
   private metricsManager: MetricsManager;
   public LoggerProxy = LoggerProxy;
@@ -79,7 +82,7 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
       /**
        * This is used for handling the async requests by sending webex.request and wait for corresponding websocket event.
        */
-      this.httpRequest = HttpRequest.getInstance({
+      this.webexRequest = WebexRequest.getInstance({
         webex: this.$webex,
       });
 
@@ -87,7 +90,6 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
         webex: this.$webex,
         connectionConfig: this.getConnectionConfig(),
       });
-      // TODO: https://jira-eng-gpk2.cisco.com/jira/browse/SPARK-626777 Implement the de-register method and close the listener there
       this.services.webSocketManager.on('message', this.handleWebSocketMessage);
 
       this.webCallingService = new WebCallingService(this.$webex);
@@ -154,6 +156,78 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
       LoggerProxy.error(`Error during register: ${error}`, {
         module: CC_FILE,
         method: this.register.name,
+      });
+      this.webexRequest.uploadLogs({
+        correlationId: error?.trackingId,
+      });
+
+      throw error;
+    }
+  }
+
+  /**
+   * This is used to unregister the CC SDK and clean up all resources.
+   * @returns Promise<void>
+   * @throws Error
+   */
+  public async deregister(): Promise<void> {
+    try {
+      this.metricsManager.timeEvent([
+        METRIC_EVENT_NAMES.WEBSOCKET_DEREGISTER_SUCCESS,
+        METRIC_EVENT_NAMES.WEBSOCKET_DEREGISTER_FAIL,
+      ]);
+
+      this.taskManager.off(TASK_EVENTS.TASK_INCOMING, this.handleIncomingTask);
+      this.taskManager.off(TASK_EVENTS.TASK_HYDRATE, this.handleTaskHydrate);
+      this.taskManager.unregisterIncomingCallEvent();
+
+      this.services.webSocketManager.off('message', this.handleWebSocketMessage);
+      this.services.connectionService.off('connectionLost', this.handleConnectionLost);
+
+      if (
+        this.agentConfig.webRtcEnabled &&
+        this.agentConfig.loginVoiceOptions.includes(LoginOption.BROWSER)
+      ) {
+        if (this.$webex.internal.mercury.connected) {
+          this.$webex.internal.mercury.off('online');
+          this.$webex.internal.mercury.off('offline');
+          await this.$webex.internal.mercury.disconnect();
+          // @ts-ignore
+          await this.$webex.internal.device.unregister();
+          LoggerProxy.log(MERCURY_DISCONNECTED_SUCCESS, {
+            module: CC_FILE,
+            method: 'deregister',
+          });
+        }
+      }
+
+      if (!this.services.webSocketManager.isSocketClosed) {
+        this.services.webSocketManager.close(false, 'Unregistering the SDK');
+      }
+
+      // Clear any cached agent configuration
+      this.agentConfig = null;
+
+      LoggerProxy.log('Deregistered successfully', {
+        module: CC_FILE,
+        method: 'deregister',
+      });
+
+      this.metricsManager.trackEvent(METRIC_EVENT_NAMES.WEBSOCKET_DEREGISTER_SUCCESS, {}, [
+        'operational',
+      ]);
+    } catch (error) {
+      this.metricsManager.trackEvent(
+        METRIC_EVENT_NAMES.WEBSOCKET_DEREGISTER_FAIL,
+        {
+          error: error.message || UNKNOWN_ERROR,
+        },
+        ['operational']
+      );
+
+      LoggerProxy.error(`Error during deregister: ${error}`, {
+        module: CC_FILE,
+        method: 'deregister',
       });
 
       throw error;
@@ -300,7 +374,19 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
       }
 
       const resp = await loginResponse;
+      const {channelsMap, ...loginData} = resp.data;
+      const response = {
+        ...loginData,
+        mmProfile: {
+          chat: channelsMap.chat?.length,
+          email: channelsMap.email?.length,
+          social: channelsMap.social?.length,
+          telephony: channelsMap.telephony?.length,
+        },
+        notifsTrackingId: resp.trackingId,
+      };
 
+      this.webCallingService.setLoginOption(data.loginOption);
       this.metricsManager.trackEvent(
         METRIC_EVENT_NAMES.STATION_LOGIN_SUCCESS,
         {
@@ -313,11 +399,7 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
         ['behavioral', 'business', 'operational']
       );
 
-      // TODO: https://jira-eng-gpk2.cisco.com/jira/browse/SPARK-626777 Implement the de-register method and close the listener there
-      // this.services.webSocketManager.on('message', this.handleWebSocketMessage);
-      // this.incomingTaskListener();
-
-      return resp;
+      return response;
     } catch (error) {
       const failure = error.details as Failure;
       this.metricsManager.trackEvent(
@@ -362,12 +444,6 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
       if (this.webCallingService) {
         this.webCallingService.deregisterWebCallingLine();
       }
-
-      // TODO: https://jira-eng-gpk2.cisco.com/jira/browse/SPARK-626777 Implement the de-register method and close the listener there
-      // this.services.webSocketManager.off('message', this.handleWebSocketMessage);
-      // this.taskManager.unregisterIncomingCallEvent();
-      // this.taskManager.off(TASK_EVENTS.TASK_INCOMING, this.handleIncomingTask);
-      // this.taskManager.off(TASK_EVENTS.TASK_HYDRATE, this.handleTaskHydrate);
 
       return resp;
     } catch (error) {
@@ -558,10 +634,7 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
       let {auxCodeId} = reLoginResponse.data;
       this.agentConfig.lastStateChangeTimestamp = lastStateChangeTimestamp;
       this.agentConfig.lastIdleCodeChangeTimestamp = lastIdleCodeChangeTimestamp;
-
-      // To handle re-registration of event listeners on silent relogin
-      // TODO: https://jira-eng-gpk2.cisco.com/jira/browse/SPARK-626777 Implement the de-register method and close the listener there
-      // this.incomingTaskListener();
+      await this.handleDeviceType(deviceType as LoginOption, dn);
 
       if (lastStateChangeReason === 'agent-wss-disconnect') {
         LoggerProxy.info(
@@ -592,7 +665,6 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
         }
       }
       this.agentConfig.lastStateAuxCodeId = auxCodeId;
-      await this.handleDeviceType(deviceType as LoginOption, dn);
       this.agentConfig.isAgentLoggedIn = true;
       // TODO: https://jira-eng-gpk2.cisco.com/jira/browse/SPARK-626777 Implement the de-register method and close the listener there
       this.services.webSocketManager.on('message', this.handleWebSocketMessage);
@@ -614,6 +686,8 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
    * Handles the device type specific logic
    */
   private async handleDeviceType(deviceType: LoginOption, dn: string): Promise<void> {
+    this.webCallingService.setLoginOption(deviceType);
+    this.agentConfig.deviceType = deviceType;
     switch (deviceType) {
       case LoginOption.BROWSER:
         await this.webCallingService.registerWebCallingLine();
@@ -629,8 +703,6 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
         });
         throw new Error(`Unsupported device type: ${deviceType}`);
     }
-    this.webCallingService.setLoginOption(deviceType);
-    this.agentConfig.deviceType = deviceType;
   }
 
   /**
@@ -647,6 +719,11 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
 
   public async startOutdial(destination: string): Promise<TaskResponse> {
     try {
+      this.metricsManager.timeEvent([
+        METRIC_EVENT_NAMES.TASK_OUTDIAL_SUCCESS,
+        METRIC_EVENT_NAMES.TASK_OUTDIAL_FAILED,
+      ]);
+
       // Construct the outdial payload.
       const outDialPayload: DialerPayload = {
         destination,
@@ -659,8 +736,28 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
 
       const result = await this.services.dialer.startOutdial({data: outDialPayload});
 
+      this.metricsManager.trackEvent(
+        METRIC_EVENT_NAMES.TASK_OUTDIAL_SUCCESS,
+        {
+          ...MetricsManager.getCommonTrackingFieldForAQMResponse(result),
+          destination,
+          mediaType: OUTDIAL_MEDIA_TYPE,
+        },
+        ['behavioral', 'business', 'operational']
+      );
+
       return result;
     } catch (error) {
+      const failure = error.details as Failure;
+      this.metricsManager.trackEvent(
+        METRIC_EVENT_NAMES.TASK_OUTDIAL_FAILED,
+        {
+          ...MetricsManager.getCommonTrackingFieldForAQMResponseFailed(failure),
+          destination,
+          mediaType: OUTDIAL_MEDIA_TYPE,
+        },
+        ['behavioral', 'business', 'operational']
+      );
       const {error: detailedError} = getErrorDetails(error, 'startOutdial', CC_FILE);
       throw detailedError;
     }
@@ -702,5 +799,19 @@ export default class ContactCenter extends WebexPlugin implements IContactCenter
     }
 
     return this.services.config.getQueues(orgId, page, pageSize, search, filter);
+  }
+
+  /**
+   * Uploads logs to help troubleshoot SDK issues.
+   *
+   * This method collects the current SDK logs including network requests, WebSocket
+   * messages, and client-side events, then securely submits them to Webex's diagnostics
+   * service. The returned tracking ID, feedbackID can be provided to Webex support for faster
+   * issue resolution.
+   * @returns Promise<SubmitLogsResponse>
+   * @throws Error
+   */
+  public async uploadLogs(): Promise<UploadLogsResponse> {
+    return this.webexRequest.uploadLogs();
   }
 }

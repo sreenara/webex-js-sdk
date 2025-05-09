@@ -88,11 +88,25 @@ export enum LOGGING_LEVEL {
   info = 'INFO',
   trace = 'TRACE',
 }
+
+export type LogsMetaData = {
+  feedbackId?: string;
+  correlationId?: string;
+};
+
+export type UploadLogsResponse = {
+  trackingid?: string;
+  url?: string;
+  userId?: string;
+  feedbackId?: string;
+  correlationId?: string;
+};
 interface IWebexInternal {
   mercury: {
     on: Listener;
     off: ListenerOff;
     connect: () => Promise<void>;
+    disconnect: () => Promise<void>;
     connected: boolean;
     connecting: boolean;
   };
@@ -124,6 +138,15 @@ interface IWebexInternal {
     submitBehavioralEvent: SubmitBehavioralEvent;
     submitOperationalEvent: SubmitOperationalEvent;
     submitBusinessEvent: SubmitBusinessEvent;
+  };
+  support: {
+    submitLogs: (
+      metaData: LogsMetaData,
+      logs: string,
+      options: {
+        type: 'diff' | 'full';
+      }
+    ) => Promise<UploadLogsResponse>;
   };
 }
 export interface WebexSDK {
@@ -256,7 +279,7 @@ export type BuddyAgents = {
   state?: 'Available' | 'Idle';
 };
 
-export type StationLoginResponse = Agent.StationLoginSuccess | Error;
+export type StationLoginResponse = Agent.StationLoginSuccessResponse | Error;
 export type StationLogoutResponse = Agent.LogoutSuccess | Error;
 export type StationReLoginResponse = Agent.ReloginSuccess | Error;
 export type SetStateResponse = Agent.StateChangeSuccess | Error;

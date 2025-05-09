@@ -108,7 +108,7 @@ function generateWebexConfig({credentials}) {
       services: {
         discovery: {
           u2c: 'https://u2c-intb.ciscospark.com/u2c/api/v1',
-          hydra: 'https://apialpha.ciscospark.com/v1/'
+          hydra: 'https://hydra-intb.ciscospark.com/v1/'
         }
       }
     }),
@@ -3381,8 +3381,8 @@ async function toggleBrb({unmuteAudio = false, unmuteVideo = false}) {
       isBrb = enableBrb;
 
       if (enableBrb) {
-        localMediaCameraMuted = localMedia.cameraStream.userMuted;
-        localMediaMicMuted = localMedia.microphoneStream.userMuted;
+        localMediaCameraMuted = localMedia.cameraStream?.userMuted;
+        localMediaMicMuted = localMedia.microphoneStream?.userMuted;
 
         // stop sharing and disable buttons to use it in brb
         await stopScreenShare();
@@ -3391,8 +3391,8 @@ async function toggleBrb({unmuteAudio = false, unmuteVideo = false}) {
         startShareBtn.disabled = true;
         handleBrbShareMessage(true);
 
-        localMedia.cameraStream.setUserMuted(true);
-        localMedia.microphoneStream.setUserMuted(true);
+        localMedia.cameraStream?.setUserMuted(true);
+        localMedia.microphoneStream?.setUserMuted(true);
       } else {
         if (unmuteAudio) {
           localMedia.microphoneStream.setUserMuted(false);

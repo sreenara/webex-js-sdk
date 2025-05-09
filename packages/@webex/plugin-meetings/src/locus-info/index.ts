@@ -17,7 +17,9 @@ import {
   MEETING_REMOVED_REASON,
   CALL_REMOVED_REASON,
   RECORDING_STATE,
+  BREAKOUTS,
 } from '../constants';
+
 import InfoUtils from './infoUtils';
 import FullState from './fullState';
 import SelfUtils from './selfUtils';
@@ -67,6 +69,7 @@ export default class LocusInfo extends EventsScope {
   services: any;
   resources: any;
   mainSessionLocusCache: any;
+  self: any;
   /**
    * Constructor
    * @param {function} updateMeeting callback to update the meeting object from an object
@@ -814,6 +817,8 @@ export default class LocusInfo extends EventsScope {
           hasMeetingFullChanged,
           hasPracticeSessionEnabledChanged,
           hasStageViewChanged,
+          hasAnnotationControlChanged,
+          hasRemoteDesktopControlChanged,
         },
         current,
       } = ControlsUtils.getControls(this.controls, controls);
@@ -1046,6 +1051,22 @@ export default class LocusInfo extends EventsScope {
           {file: 'locus-info', function: 'updateControls'},
           LOCUSINFO.EVENTS.CONTROLS_STAGE_VIEW_UPDATED,
           {state: current.videoLayout}
+        );
+      }
+
+      if (hasAnnotationControlChanged) {
+        this.emitScoped(
+          {file: 'locus-info', function: 'updateControls'},
+          LOCUSINFO.EVENTS.CONTROLS_ANNOTATION_CHANGED,
+          {state: current.annotationControl}
+        );
+      }
+
+      if (hasRemoteDesktopControlChanged) {
+        this.emitScoped(
+          {file: 'locus-info', function: 'updateControls'},
+          LOCUSINFO.EVENTS.CONTROLS_REMOTE_DESKTOP_CONTROL_CHANGED,
+          {state: current.rdcControl}
         );
       }
 
@@ -1706,7 +1727,8 @@ export default class LocusInfo extends EventsScope {
    * @memberof LocusInfo
    */
   getTheLocusToUpdate(newLocus: any) {
-    const switchStatus = ControlsUtils.getSessionSwitchStatus(this.controls, newLocus?.controls);
+    const switchStatus = ControlsUtils.getSessionSwitchStatus(this, newLocus);
+
     if (switchStatus.isReturnToMain && this.mainSessionLocusCache) {
       return cloneDeep(this.mainSessionLocusCache);
     }

@@ -13,9 +13,11 @@ import {
   Profile,
   ListTeamsResponse,
   AuxCode,
+  MultimediaProfileResponse,
+  SiteInfo,
   ContactServiceQueue,
 } from './types';
-import HttpRequest from '../core/HttpRequest';
+import WebexRequest from '../core/WebexRequest';
 import {WCC_API_GATEWAY} from '../constants';
 import {CONFIG_FILE_NAME} from '../../constants';
 import {parseAgentConfigs} from './Util';
@@ -23,7 +25,6 @@ import {
   DEFAULT_AUXCODE_ATTRIBUTES,
   DEFAULT_PAGE,
   DEFAULT_PAGE_SIZE,
-  DEFAULT_TEAM_ATTRIBUTES,
   endPointMap,
 } from './constants';
 
@@ -31,9 +32,9 @@ import {
 The AgentConfigService class provides methods to fetch agent configuration data.
 */
 export default class AgentConfigService {
-  private httpReq: HttpRequest;
+  private webexReq: WebexRequest;
   constructor() {
-    this.httpReq = HttpRequest.getInstance();
+    this.webexReq = WebexRequest.getInstance();
   }
 
   /**
@@ -60,22 +61,19 @@ export default class AgentConfigService {
       LoggerProxy.info('Fetched user data', {module: CONFIG_FILE_NAME, method: 'getAgentConfig'});
 
       const agentProfilePromise = this.getDesktopProfileById(orgId, userConfigData.agentProfileId);
+      const siteInfoPromise = this.getSiteInfo(orgId, userConfigData.siteId);
 
       const userDialPlanPromise = agentProfilePromise.then((agentProfileConfigData) =>
         agentProfileConfigData.dialPlanEnabled ? this.getDialPlanData(orgId) : []
       );
 
       const userTeamPromise = userConfigData.teamIds
-        ? this.getAllTeams(
-            orgId,
-            DEFAULT_PAGE_SIZE,
-            userConfigData.teamIds,
-            DEFAULT_TEAM_ATTRIBUTES
-          )
+        ? this.getAllTeams(orgId, DEFAULT_PAGE_SIZE, userConfigData.teamIds)
         : Promise.resolve([]);
 
       const [
         agentProfileConfigData,
+        siteInfo,
         userDialPlanData,
         userTeamData,
         orgInfo,
@@ -85,6 +83,7 @@ export default class AgentConfigService {
         auxCodesData,
       ] = await Promise.all([
         agentProfilePromise,
+        siteInfoPromise,
         userDialPlanPromise,
         userTeamPromise,
         orgInfoPromise,
@@ -93,6 +92,11 @@ export default class AgentConfigService {
         urlMappingPromise,
         auxCodesPromise,
       ]);
+
+      const multimediaProfileId =
+        userConfigData.multimediaProfileId ||
+        userTeamData[0]?.multiMediaProfileId ||
+        siteInfo.multimediaProfileId;
 
       LoggerProxy.info('Fetched all required data', {
         module: CONFIG_FILE_NAME,
@@ -109,6 +113,7 @@ export default class AgentConfigService {
         agentProfileData: agentProfileConfigData,
         dialPlanData: userDialPlanData,
         urlMapping: urlMappingData,
+        multimediaProfileId,
       });
 
       // replace CONFIG_FILE_NAME with CONFIG_FILE_NAME
@@ -140,7 +145,7 @@ export default class AgentConfigService {
   public async getUserUsingCI(orgId: string, agentId: string): Promise<AgentResponse> {
     try {
       const resource = endPointMap.userByCI(orgId, agentId);
-      const response = await this.httpReq.request({
+      const response = await this.webexReq.request({
         service: WCC_API_GATEWAY,
         resource,
         method: HTTP_METHODS.GET,
@@ -177,7 +182,7 @@ export default class AgentConfigService {
   ): Promise<DesktopProfileResponse> {
     try {
       const resource = endPointMap.desktopProfile(orgId, desktopProfileId);
-      const response = await this.httpReq.request({
+      const response = await this.webexReq.request({
         service: WCC_API_GATEWAY,
         resource,
         method: HTTP_METHODS.GET,
@@ -203,6 +208,43 @@ export default class AgentConfigService {
   }
 
   /**
+   * Fetches the multimedia profile data for the given orgId and multimediaProfileId.
+   * @param {string} orgId
+   * @param {string} multimediaProfileId
+   * @returns {Promise<MultimediaProfileResponse>}
+   */
+  public async getMultimediaProfileById(
+    orgId: string,
+    multimediaProfileId: string
+  ): Promise<MultimediaProfileResponse> {
+    try {
+      const resource = endPointMap.multimediaProfile(orgId, multimediaProfileId);
+      const response = await this.webexReq.request({
+        service: WCC_API_GATEWAY,
+        resource,
+        method: HTTP_METHODS.GET,
+      });
+
+      if (response.statusCode !== 200) {
+        throw new Error(`API call failed with ${response.statusCode}`);
+      }
+
+      LoggerProxy.log('getMultimediaProfileById API success.', {
+        module: CONFIG_FILE_NAME,
+        method: 'getMultimediaProfileById',
+      });
+
+      return Promise.resolve(response.body);
+    } catch (error) {
+      LoggerProxy.error(`getMultimediaProfileById API call failed with ${error}`, {
+        module: CONFIG_FILE_NAME,
+        method: 'getMultimediaProfileById',
+      });
+      throw error;
+    }
+  }
+
+  /**
    * fetches the list of teams for the given orgId.
    * @param {string} orgId
    *  @param {number} page
@@ -215,12 +257,11 @@ export default class AgentConfigService {
     orgId: string,
     page: number,
     pageSize: number,
-    filter: string[],
-    attributes: string[]
+    filter: string[]
   ): Promise<ListTeamsResponse> {
     try {
-      const resource = endPointMap.listTeams(orgId, page, pageSize, filter, attributes);
-      const response = await this.httpReq.request({
+      const resource = endPointMap.listTeams(orgId, page, pageSize, filter);
+      const response = await this.webexReq.request({
         service: WCC_API_GATEWAY,
         resource,
         method: HTTP_METHODS.GET,
@@ -253,21 +294,16 @@ export default class AgentConfigService {
    * @param {string[]} attributes
    * @returns {Promise<TeamList[]>}
    */
-  public async getAllTeams(
-    orgId: string,
-    pageSize: number,
-    filter: string[],
-    attributes: string[]
-  ): Promise<TeamList[]> {
+  public async getAllTeams(orgId: string, pageSize: number, filter: string[]): Promise<TeamList[]> {
     try {
       let allTeams: TeamList[] = [];
       let page = DEFAULT_PAGE;
-      const firstResponse = await this.getListOfTeams(orgId, page, pageSize, filter, attributes);
+      const firstResponse = await this.getListOfTeams(orgId, page, pageSize, filter);
       const totalPages = firstResponse.meta.totalPages;
       allTeams = allTeams.concat(firstResponse.data);
       const requests = [];
       for (page = DEFAULT_PAGE + 1; page < totalPages; page += 1) {
-        requests.push(this.getListOfTeams(orgId, page, pageSize, filter, attributes));
+        requests.push(this.getListOfTeams(orgId, page, pageSize, filter));
       }
       const responses = await Promise.all(requests);
 
@@ -303,7 +339,7 @@ export default class AgentConfigService {
   ): Promise<ListAuxCodesResponse> {
     try {
       const resource = endPointMap.listAuxCodes(orgId, page, pageSize, filter, attributes);
-      const response = await this.httpReq.request({
+      const response = await this.webexReq.request({
         service: WCC_API_GATEWAY,
         resource,
         method: HTTP_METHODS.GET,
@@ -372,6 +408,40 @@ export default class AgentConfigService {
   }
 
   /**
+   * Fetches the site data for the given orgId and siteId.
+   * @param {string} orgId
+   * @param {string} siteId
+   * @returns {Promise<SiteInfo>}
+   */
+  public async getSiteInfo(orgId: string, siteId: string): Promise<SiteInfo> {
+    try {
+      const resource = endPointMap.siteInfo(orgId, siteId);
+      const response = await this.webexReq.request({
+        service: WCC_API_GATEWAY,
+        resource,
+        method: HTTP_METHODS.GET,
+      });
+
+      if (response.statusCode !== 200) {
+        throw new Error(`API call failed with ${response.statusCode}`);
+      }
+
+      LoggerProxy.log('getSiteInfo api success.', {
+        module: CONFIG_FILE_NAME,
+        method: 'getSiteInfo',
+      });
+
+      return Promise.resolve(response.body);
+    } catch (error) {
+      LoggerProxy.error(`getSiteInfo API call failed with ${error}`, {
+        module: CONFIG_FILE_NAME,
+        method: 'getSiteInfo',
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Fetches the organization info for the given orgId.
    * @param {string} orgId
    * @returns {Promise<OrgInfo>}
@@ -379,7 +449,7 @@ export default class AgentConfigService {
   public async getOrgInfo(orgId: string): Promise<OrgInfo> {
     try {
       const resource = endPointMap.orgInfo(orgId);
-      const response = await this.httpReq.request({
+      const response = await this.webexReq.request({
         service: WCC_API_GATEWAY,
         resource,
         method: HTTP_METHODS.GET,
@@ -409,7 +479,7 @@ export default class AgentConfigService {
   public async getOrganizationSetting(orgId: string): Promise<OrgSettings> {
     try {
       const resource = endPointMap.orgSettings(orgId);
-      const response = await this.httpReq.request({
+      const response = await this.webexReq.request({
         service: WCC_API_GATEWAY,
         resource,
         method: HTTP_METHODS.GET,
@@ -442,7 +512,7 @@ export default class AgentConfigService {
   public async getTenantData(orgId: string): Promise<TenantData> {
     try {
       const resource = endPointMap.tenantData(orgId);
-      const response = await this.httpReq.request({
+      const response = await this.webexReq.request({
         service: WCC_API_GATEWAY,
         resource,
         method: HTTP_METHODS.GET,
@@ -475,7 +545,7 @@ export default class AgentConfigService {
   public async getURLMapping(orgId: string): Promise<URLMapping[]> {
     try {
       const resource = endPointMap.urlMapping(orgId);
-      const response = await this.httpReq.request({
+      const response = await this.webexReq.request({
         service: WCC_API_GATEWAY,
         resource,
         method: HTTP_METHODS.GET,
@@ -508,7 +578,7 @@ export default class AgentConfigService {
   public async getDialPlanData(orgId: string): Promise<DialPlanEntity[]> {
     try {
       const resource = endPointMap.dialPlan(orgId);
-      const response = await this.httpReq.request({
+      const response = await this.webexReq.request({
         service: WCC_API_GATEWAY,
         resource,
         method: HTTP_METHODS.GET,
@@ -555,7 +625,7 @@ export default class AgentConfigService {
       if (filter) queryParams += `&filter=${filter}`;
 
       const resource = endPointMap.queueList(orgId, queryParams);
-      const response = await this.httpReq.request({
+      const response = await this.webexReq.request({
         service: WCC_API_GATEWAY,
         resource,
         method: HTTP_METHODS.GET,
