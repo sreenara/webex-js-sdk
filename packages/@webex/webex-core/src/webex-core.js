@@ -436,7 +436,7 @@ const WebexCore = AmpState.extend({
   /**
    * setConfig
    *
-   * Allows updating config
+   *
    *
    * @instance
    * @memberof WebexCore
