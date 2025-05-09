@@ -698,7 +698,6 @@ describe('plugin-meetings', () => {
             audioContext: {},
             authToken: 'fake_token',
             mode: 'WORKLET',
-            env: 'prod',
             avoidSimd: false,
           });
           assert.exists(result.enable);
